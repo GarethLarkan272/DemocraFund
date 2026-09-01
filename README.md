@@ -39,8 +39,8 @@ Members select one or more **departments** they're interested in (e.g. *Course*,
 2. **Proposal submission** — Builders submit proposals: price, timeline, plan/docs (IPFS), broken into **milestones/stages** with a payment % per stage.
 3. **Citizen voting** — Members who opted into that department can view all proposals and vote for one. Note: All members may view all tenders and proposals but only opted in members may vote. One member, one vote. Voting window has a defined close time.
 4. **Shortlist** — Top 5 (or fewer, if fewer proposals) proposals by vote count are surfaced to Admin.
-5. **Government award** — Admin selects the winner from the shortlist (not necessarily #1 — this preserves legitimate government discretion while making an off-list, unvoted choice conspicuous and auditable).
-6. **Escrow creation** — On award, an escrow contract is deployed/instantiated for this specific project, funded with the agreed budget in **HumewoodCoin**.
+5. **Government award** — Admin selects the winner from the shortlist (not necessarily #1, this preserves legitimate government discretion while making an off-list, unvoted choice conspicuous and auditable).
+6. **Escrow creation** — On award, an escrow contract is deployed/instantiated for this specific project, funded with the agreed budget in **HumewoodZAR**.
 7. **Committee formation** — 1 admin representative + 3 members randomly selected from the department's opted-in pool are assigned as the milestone-approval committee, alongside the builder. This is the 5-signer multisig.
 8. **Milestone execution loop** (repeats per stage):
    - Builder marks a stage complete + uploads evidence (photos, invoices) to IPFS.
@@ -52,24 +52,34 @@ Members select one or more **departments** they're interested in (e.g. *Course*,
 
 ## 4. Money Flow: The "Shadow Rand" Model
 
-Real fiat rails (bank integration, card processing, regulated custody) are out of scope for a the MVP. But the *point* of the demo is proving the fund-release logic is real and trustless — so we don't fake the token movement, we fake the edges.
-
+ 
+Real fiat rails (bank integration, card processing, regulated custody) are out of scope for a MVP. But the *point* of the demo is proving the fund-release logic is real and trustless — so we don't fake the token movement, we fake the edges.
+ 
+**Critical design decision: DemocraFund never custodies member (or taxpayer) money at all.** There are two entirely separate tracks:
+ 
+- **Governance track** (members, officials, citizen committee) — wallets exist purely for identity and attribution (whose vote, whose signature). No balance, no token, no money ever touches a member's wallet. Members don't "fund" anything on-chain; their real-world dues/fees stay exactly where they already go today (the club's real bank account).
+- **Money track** (club ↔ builder only) — the *only* funds that ever touch the chain are the specific budget for an awarded project, and the builder's payment for it.
 ```
-[Member pays real ZAR to club when paying membership at the beginning of the year or on monthly debit order] -- (admin bridge, manual for MVP)--> [Wallet credited with HumewoodCoin]
-                                                                              |
-                                                                              v
-                                                        [Project Escrow Contract, funded in HumewoodCoin]
-                                                                              |
-                                                          3-of-5 multisig approves each stage
-                                                                              |
-                                                                              v
-                                                        [Builder's wallet receives HumewoodCoin]
-                                                                              |
-                                        (admin bridge, manual for MVP) --> [Builder paid real ZAR]
+[Humewood's real bank account — club dues, not on-chain at all]
+                    |
+                    | (tender awarded)
+                    v
+          Admin mints exact awarded budget in HumewoodZAR,
+          straight into that project's Escrow Contract
+                    |
+                    v
+        [Project Escrow Contract, funded in HumewoodZAR]
+                    |
+          3-of-5 multisig approves each stage
+                    |
+                    v
+        [Builder's wallet receives HumewoodZAR]
+                    |
+   (admin bridge, manual for MVP) --> [Builder paid real ZAR]
 ```
 
-- **HumewoodCoin**: an ERC-20-style token on Arbitrum, designed to look and behave like a stablecoin. Admin-controlled `mint`/`burn`, pausable, 1:1 conceptual peg to ZAR. This is intentionally built as if it *were* a real stablecoin integration, so swapping the manual admin bridge for a real payment processor (Stripe/EFT in, bank payout out) or a regulated custodian later is a plug-in change, not a rewrite.
-- **What's real vs. simulated**: The ZAR↔token conversion at the edges is currently a trusted, manual admin action. Everything from the moment tokens enter escrow to the moment they leave is fully on-chain, auditable, and enforced by the multisig, genuinely trustless, not a mockup.
+- **HumewoodZAR**: an ERC-20-style token on Arbitrum, designed to look and behave like a stablecoin. Admin-controlled `mint`, pausable, 1:1 conceptual peg to ZAR. This is intentionally built as if it *were* a real stablecoin integration, so that swapping the manual admin bridge for a real payment processor (Stripe/EFT in, bank payout out) or a regulated custodian later is a plug-in change, not a rewrite.
+- **What's real vs. simulated**: The ZAR↔token conversion at the point of withdraw is currently a trusted, manual admin action. Everything from the moment tokens enter escrow via minting to the moment they leave is fully on-chain, auditable, and enforced by the multisig, genuinely trustless, not a mockup.
 - **Why this matters for the demo**: judges/Humewood can watch a real block explorer and see real fund movement triggered by real multisig signatures. That's the credibility-building moment.
 
 ---
@@ -87,19 +97,7 @@ Real fiat rails (bank integration, card processing, regulated custody) are out o
 
 ## 6. System Architecture (High-Level)
 
-**On-chain (Arbitrum, Sepolia testnet for MVP):**
-- `TenderRegistry.sol` — create/list tenders, store IPFS doc hashes, department tag, status.
-- `ProposalRegistry.sol` — builder proposals linked to a tender, milestone breakdown, IPFS docs.
-- `VotingContract.sol` — records votes per tender per eligible member (see §7 on gas trade-offs).
-- `HumewoodCoin.sol` — ERC-20, admin mint/burn/pause.
-- `ProjectEscrow.sol` — deployed per awarded tender (factory pattern via `EscrowFactory.sol`); holds funds, defines milestone stages, enforces 3-of-5 multisig release logic, plus a separate higher-threshold breach/termination action (see §7.1).
-- `CommitteeSelector.sol` — integrates Chainlink VRF to randomly draw the 3 citizen signers (and replacements) from the eligible, opted-in member pool for a project's department.
-
-**Off-chain:**
-- **Backend (Node/Express or similar)**: custodial wallet management (key generation/encryption per member on signup), auth (email/password), orchestrates IPFS uploads, syncs on-chain events to a readable feed for the frontend, handles the manual ZAR↔token admin bridge actions, and runs the gas sponsorship layer (see §6.1).
-- **Database (Postgres)**: member profiles, department preferences, session/auth data, cached on-chain state for fast UI reads (never the source of truth for money — chain is always canonical).
-- **IPFS (via Pinata or web3.storage)**: all tender docs, proposal docs, milestone evidence photos, and reject-vote justification evidence (see §7).
-- **Frontend (React)**: member-facing app that *feels* like a normal web app — no wallet popups, no gas-fee prompts, no seed phrases. Wallet is fully abstracted behind login (per your decision).
+Coming soon...
 
 ### 6.1 Gas Sponsorship (users never touch gas or sign anything)
 
@@ -110,12 +108,12 @@ The only real requirement: whichever address is submitting a transaction needs n
 - Backend maintains a funded **treasury wallet**.
 - Before submitting a transaction for a member, backend checks their custodial wallet's ETH balance; if insufficient, it auto-tops-up a small amount from the treasury first. Entirely invisible to the user.
 
-This is intentionally the simple version. Two more sophisticated patterns exist and are worth naming in the pitch as roadmap items rather than building now:
+This is intentionally the simple version. Two more sophisticated patterns exist and are worth naming as roadmap items rather than building now:
 
 - **Meta-transactions (EIP-2771 / Gas Station Network)** — the standard fix *when users self-custody*: they sign a message off-chain, a relayer submits and pays gas on their behalf. Not needed yet since custody already solves the signing problem, but relevant the moment DemocraFund offers a self-custody option.
-- **ERC-4337 Account Abstraction + Paymaster** — the production-grade answer for a public, national-scale deployment: every user gets a smart-contract wallet, gas can be sponsored or paid in any token, and the system stops depending on Humewood's backend being the sole custodian of every key (a meaningful centralization/security concern at scale — worth flagging explicitly to a security-minded audience as the deliberate next evolution, not an oversight).
+- **ERC-4337 Account Abstraction + Paymaster** — the production-grade answer for a public, national-scale deployment: every user gets a smart-contract wallet, gas can be sponsored or paid in any token, and the system stops depending on Humewood's backend being the sole custodian of every key.
 
-Each member still gets a distinct, real on-chain address even though the backend holds the key — so every vote and every milestone signature remains cryptographically attributable to a specific person. The audit trail isn't sacrificed by removing friction, only the friction is.
+Each member still gets a distinct, real on-chain address even though the backend holds the key, so every vote and every milestone signature remains cryptographically attributable to a specific person. The audit trail isn't sacrificed by removing friction, only the friction is.
 
 ---
 
@@ -124,11 +122,11 @@ Each member still gets a distinct, real on-chain address even though the backend
 Not implemented in the MVP, but the design is specified now so it can be pointed to honestly as "solved on paper, next to build" rather than an unnoticed gap.
 
 - **Stalled signer.** A citizen or official signer doesn't respond within a defined window (e.g. 7 days).
-  - Citizen signer: auto-replaced via a fresh Chainlink VRF draw from the eligible, opted-in member pool — reuses the same randomness mechanism as initial committee formation, so it's a natural extension rather than new logic.
-  - Admin/official signer: there's only one, so a timeout can't just redraw. Likely needs a designated deputy-admin role who can stand in after a timeout. Flagged as an open design question — not fully resolved.
-- **Contested milestone.** A signer disagrees that a stage is complete. Any **reject** vote requires a written reason plus supporting evidence (photos, docs) uploaded to IPFS, visible to everyone alongside approve votes. This gives a bad-faith rejection the same public accountability cost as a bad-faith approval — nobody can silently veto without justifying it in public.
-- **Builder abandonment / breach.** A separate, deliberately higher-threshold action — **4-of-5, drawn from the same 5 committee members** (1 admin + 3 citizens + builder, though the builder obviously can't approve their own termination in practice) — can redirect remaining escrow funds (e.g. back to the club treasury, or to a replacement builder). Requires mandatory public on-chain justification, same evidence pattern as a milestone rejection. Making this threshold harder to reach than a normal release is intentional: terminating a builder is a heavier action and shouldn't be triggerable by the same bare majority that approves routine progress.
-- **Process appeals.** Currently no path exists if someone believes a signer replacement or a rejection was itself unfair, beyond raising it with the admin directly. This is a genuine open gap — a mature version likely needs a broader member-jury appeal mechanism. Worth stating plainly in the pitch rather than glossing over.
+  - Citizen signer: auto-replaced via a fresh Chainlink VRF draw from the eligible, opted-in member pool, reuses the same randomness mechanism as initial committee formation, so it's a natural extension rather than new logic.
+  - Admin/official signer: there's only one, so a timeout can't just redraw. Likely needs a designated deputy-admin role who can stand in after a timeout. Flagged as an open design question, not fully resolved.
+- **Contested milestone.** A signer disagrees that a stage is complete. Any **reject** vote requires a written reason plus supporting evidence (photos, docs) uploaded to IPFS, visible to everyone alongside approve votes. This gives a bad-faith rejection the same public accountability cost as a bad-faith approval, nobody can silently veto without justifying it in public.
+- **Builder abandonment / breach.** A separate, deliberately higher-threshold action, **4-of-5, drawn from the same 5 committee members** (1 admin + 3 citizens + builder, though the builder obviously can't approve their own termination in practice), can redirect remaining escrow funds (e.g. back to the club treasury, or to a replacement builder). Requires mandatory public on-chain justification, same evidence pattern as a milestone rejection. Making this threshold harder to reach than a normal release is intentional: terminating a builder is a heavier action and shouldn't be triggerable by the same bare majority that approves routine progress.
+- **Process appeals.** Currently no path exists if someone believes a signer replacement or a rejection was itself unfair, beyond raising it with the admin directly. This is a genuine open gap, a mature version likely needs a broader member-jury appeal mechanism. Worth stating plainly in the pitch rather than glossing over.
 
 ---
 
