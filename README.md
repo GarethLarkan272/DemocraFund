@@ -40,7 +40,7 @@ Members select one or more **departments** they're interested in (e.g. *Course*,
 3. **Citizen voting** — Members who opted into that department can view all proposals and vote for one. Note: All members may view all tenders and proposals but only opted in members may vote. One member, one vote. Voting window has a defined close time.
 4. **Shortlist** — Top 5 (or fewer, if fewer proposals) proposals by vote count are surfaced to Admin.
 5. **Government award** — Admin selects the winner from the shortlist (not necessarily #1, this preserves legitimate government discretion while making an off-list, unvoted choice conspicuous and auditable).
-6. **Escrow creation** — On award, an escrow contract is deployed/instantiated for this specific project, funded with the agreed budget in **HumewoodZAR**.
+6. **Escrow creation** — On award, an escrow contract is deployed/instantiated for this specific project, funded with the agreed budget in **Payment Token**.
 7. **Committee formation** — 1 admin representative + 3 members randomly selected from the department's opted-in pool are assigned as the milestone-approval committee, alongside the builder. This is the 5-signer multisig.
 8. **Milestone execution loop** (repeats per stage):
    - Builder marks a stage complete + uploads evidence (photos, invoices) to IPFS.
@@ -64,21 +64,21 @@ Real fiat rails (bank integration, card processing, regulated custody) are out o
                     |
                     | (tender awarded)
                     v
-          Admin mints exact awarded budget in HumewoodZAR,
+          Admin mints exact awarded budget in Payment Token,
           straight into that project's Escrow Contract
                     |
                     v
-        [Project Escrow Contract, funded in HumewoodZAR]
+        [Project Escrow Contract, funded in Payment Token]
                     |
           3-of-5 multisig approves each stage
                     |
                     v
-        [Builder's wallet receives HumewoodZAR]
+        [Builder's wallet receives Payment Token]
                     |
    (admin bridge, manual for MVP) --> [Builder paid real ZAR]
 ```
 
-- **HumewoodZAR**: an ERC-20-style token on Arbitrum, designed to look and behave like a stablecoin. Admin-controlled `mint`, pausable, 1:1 conceptual peg to ZAR. This is intentionally built as if it *were* a real stablecoin integration, so that swapping the manual admin bridge for a real payment processor (Stripe/EFT in, bank payout out) or a regulated custodian later is a plug-in change, not a rewrite.
+- **Payment Token**: an ERC-20-style token on Arbitrum, designed to look and behave like a stablecoin. Admin-controlled `mint`, pausable, 1:1 conceptual peg to ZAR. This is intentionally built as if it *were* a real stablecoin integration, so that swapping the manual admin bridge for a real payment processor (Stripe/EFT in, bank payout out) or a regulated custodian later is a plug-in change, not a rewrite.
 - **What's real vs. simulated**: The ZAR↔token conversion at the point of withdraw is currently a trusted, manual admin action. Everything from the moment tokens enter escrow via minting to the moment they leave is fully on-chain, auditable, and enforced by the multisig, genuinely trustless, not a mockup.
 - **Why this matters for the demo**: judges/Humewood can watch a real block explorer and see real fund movement triggered by real multisig signatures. That's the credibility-building moment.
 

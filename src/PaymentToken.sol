@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.27;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract HumewoodZAR is ERC20 {
+contract PaymentToken is ERC20 {
     
-    constructor() ERC20("Humewood ZAR", "HUME") {
+    constructor() ERC20("Generic Example Stable", "GES") {
       
     }
 
