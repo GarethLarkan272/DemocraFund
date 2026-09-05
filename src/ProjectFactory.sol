@@ -4,8 +4,9 @@ pragma solidity ^0.8.27;
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import "./PaymentToken.sol";
-//import "./ProjectEscrow.sol";
 import "./ProjectGovernance.sol";
+import "./ProjectEscrow.sol";
+
 
 contract ProjectFactory is AccessControl {
     using Clones for address;
@@ -30,7 +31,7 @@ contract ProjectFactory is AccessControl {
     uint256 public projectCount;
     uint64 public minimumProposalSubmissionDuration;
     uint64 public minimumVotingDuration;
-    address public immutable ESCROW_IMPLEMENTATION;
+    address public immutable PROJECT_ESCROW_IMPLEMENTATION;
     address public immutable PROJECT_GOVERNANCE_IMPLEMENTATION;
 
     constructor(
@@ -54,7 +55,7 @@ contract ProjectFactory is AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender); // can grant/revoke other roles
 
         token = PaymentToken(_paymentToken);
-        ESCROW_IMPLEMENTATION = _escrowImplementation;
+        PROJECT_ESCROW_IMPLEMENTATION = _escrowImplementation;
         PROJECT_GOVERNANCE_IMPLEMENTATION = _projectGovernanceImplementation;
         minimumProposalSubmissionDuration = _minimumProposalSubmissionDuration;
         minimumVotingDuration = _minimumVotingDuration;
@@ -99,6 +100,12 @@ contract ProjectFactory is AccessControl {
         isProject[projectGovernanceInstanceAddr] = true;
 
         emit ProjectCreated(projectGovernanceInstanceAddr);
+    }
 
+    function createAndFundEscrow(
+        uint256 _projectBudget
+    ) external onlyRole(CREATE_PROJECT_ROLE) returns (address projectEscrowInstanceAddr) {
+        projectEscrowInstanceAddr = PROJECT_ESCROW_IMPLEMENTATION.clone();
+        ProjectEscrow(projectEscrowInstanceAddr).initialize();
     }
 }
