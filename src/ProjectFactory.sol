@@ -16,6 +16,10 @@ contract ProjectFactory is AccessControl {
     error ZeroBudget();
     error InvalidProposalSubmissionDuration();
     error InvalidVotingDuration();
+    error InvalidCategory();
+    error InvalidDepartment();
+    error InvalidTitle();
+    error InvalidHash();
 
     event ProjectCreated(address indexed projectInstance);
 
@@ -26,8 +30,8 @@ contract ProjectFactory is AccessControl {
     uint256 public projectCount;
     uint64 public minimumProposalSubmissionDuration;
     uint64 public minimumVotingDuration;
-    address public immutable escrowImplementation;
-    address public immutable projectGovernanceImplementation;
+    address public immutable ESCROW_IMPLEMENTATION;
+    address public immutable PROJECT_GOVERNANCE_IMPLEMENTATION;
 
     constructor(
         uint64 _minimumProposalSubmissionDuration,
@@ -50,8 +54,8 @@ contract ProjectFactory is AccessControl {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender); // can grant/revoke other roles
 
         token = PaymentToken(_paymentToken);
-        escrowImplementation = _escrowImplementation;
-        projectGovernanceImplementation = _projectGovernanceImplementation;
+        ESCROW_IMPLEMENTATION = _escrowImplementation;
+        PROJECT_GOVERNANCE_IMPLEMENTATION = _projectGovernanceImplementation;
         minimumProposalSubmissionDuration = _minimumProposalSubmissionDuration;
         minimumVotingDuration = _minimumVotingDuration;
     }
@@ -61,22 +65,35 @@ contract ProjectFactory is AccessControl {
         uint64 _proposalDeadline,
         uint64 _votingDeadline,
         address _projectGovernanceSafeWallet,
-        bytes32 _department
+        bytes32 _title,
+        bytes32 _category,
+        bytes32 _department,
+        bytes32 _specContentHash,
+        bytes32 _ipfsHash
     ) external onlyRole(CREATE_PROJECT_ROLE) returns (address projectGovernanceInstanceAddr) {
         if (_projectGovernanceSafeWallet == address(0)) { revert AddressZero(); }
         if (_budgetCap == 0) { revert ZeroBudget(); }
         if (_proposalDeadline < block.timestamp + minimumProposalSubmissionDuration) { revert InvalidProposalSubmissionDuration(); }
         if (_votingDeadline < _proposalDeadline + minimumVotingDuration) { revert InvalidVotingDuration(); }
+        if (_title == bytes32(0)) revert InvalidTitle();
+        if (_category == bytes32(0)) revert InvalidCategory();
+        if (_department == bytes32(0)) revert InvalidDepartment();
+        if (_specContentHash == bytes32(0)) revert InvalidHash();
+        if (_ipfsHash == bytes32(0)) revert InvalidHash();
 
         projectCount++;
 
-        projectGovernanceInstanceAddr = projectGovernanceImplementation.clone();
+        projectGovernanceInstanceAddr = PROJECT_GOVERNANCE_IMPLEMENTATION.clone();
         ProjectGovernance(projectGovernanceInstanceAddr).initialize(
             _budgetCap, 
             _proposalDeadline,
             _votingDeadline,
             _projectGovernanceSafeWallet,
-            _department
+            _title,
+            _category,
+            _department,
+            _specContentHash,
+            _ipfsHash
         );
 
         isProject[projectGovernanceInstanceAddr] = true;
