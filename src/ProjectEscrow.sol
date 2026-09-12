@@ -60,13 +60,13 @@ contract ProjectEscrow is Initializable {
         projectGovernanceContract = msg.sender;
     }
 
-    function releaseFunds(uint256 _amount) external OnlyGovernanceContract ProjectOpen {
+    function releaseFunds(uint256 _amount) external onlyGovernanceContract projectOpen {
         token.safeTransfer(projectWallet, _amount);
         totalReleased += _amount;
         if(token.balanceOf(address(this)) < totalProjectBudget - totalReleased) revert AccountingMismatch();
     }
 
-    function releaseSettlement(uint256 _settlementAmount) external OnlyGovernanceContract ProjectOpen {
+    function releaseSettlement(uint256 _settlementAmount) external onlyGovernanceContract projectOpen {
         // Deducting settlementPaid here just incase in future their is a double settlement payment
         if(_settlementAmount > totalProjectBudget - totalReleased - settlementPaid) revert SettlementTooHigh();
         token.safeTransfer(projectWallet, _settlementAmount);
@@ -75,17 +75,17 @@ contract ProjectEscrow is Initializable {
 
     function cancelProject(
         uint256 _leftoverTokens
-    ) external OnlyGovernanceContract ProjectOpen {
+    ) external onlyGovernanceContract projectOpen {
         totalBurnedDueToCancellation = _leftoverTokens;
         cancelled = true;
     }
 
-    modifier ProjectOpen() {
+    modifier projectOpen() {
         if(cancelled) revert ProjectCancelled();
         _;
     }
 
-    modifier OnlyGovernanceContract() {
+    modifier onlyGovernanceContract() {
         if(msg.sender != projectGovernanceContract) revert UnauthorisedCalled();
         _;
     }

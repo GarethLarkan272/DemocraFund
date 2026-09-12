@@ -25,26 +25,28 @@ contract ProjectGovernance is Initializable, AccessControl {
     struct Proposal {
         uint256 id;
         uint256 cost;
+        uint256 numberOfMilestonesReleased;
         address admin;
         address fundWallet;
         bytes32 specContentHash;
         bytes32 ipfsHash;
+        bool depositRequired;
         Milestone[] milestones;
     }
 
     struct Milestone {
         uint256 amount;
+        bytes32 evidenceHash;
         bool released;
     }
 
-    //TODO: Make sure to check milestone amounts = total cost for project
     mapping(uint256 proposalCount => Proposal proposalInformation) public proposals;
     mapping(uint256 proposakId => uint256 proposalVotes) public numberOfVotesPerProposal;
     mapping(address user => bool voted) public hasVoted;
 
     PROJECT_LIFECYCLE public projectLifecycle;
     PROJECT_LIFECYCLE public cancelledForm;
-    Proposal public winningProposal;
+    uint256 public winningProposalId;
     address public token;
 
     bool public urgent;
@@ -53,7 +55,6 @@ contract ProjectGovernance is Initializable, AccessControl {
     uint256 public budgetCap;
     uint256 public numberOfProposals;
     uint256 public numberOfShortlistedProjects;
-    uint256 public numberOfMilestonesReleased;
     uint256 public numberOfTotalMilestones;
     uint256 public votingOpenedTimestamp;
     uint64 public proposalDeadline;
@@ -75,8 +76,6 @@ contract ProjectGovernance is Initializable, AccessControl {
 
     bytes32 public constant PROJECT_COMMITTEE = keccak256("PROJECT_COMMITTEE");
 
-    // Bounded so that awardProposal, which copies the milestone array into storage twice,
-    // can never be pushed past the block gas limit by an oversized proposal.
     uint256 public constant MAX_MILESTONES = 24;
 
     error InvalidProjectLifecycle();
@@ -95,6 +94,8 @@ contract ProjectGovernance is Initializable, AccessControl {
     error ProposalNonExistent();
     error MilestoneReleased();
     error ZeroMilestones();
+    error UnauthorisedCaller();
+    error MilestoneAlreadyReleased();
 
     event VoteCast(address indexed voter, uint256 indexed proposalId);
 
@@ -172,11 +173,11 @@ contract ProjectGovernance is Initializable, AccessControl {
     function awardProposal(
         uint256 _proposalId,
         address _projectCommittee
-    ) external ProposalExists(_proposalId) onlyRole(DEFAULT_ADMIN_ROLE) returns (address projectEscrowInstanceAddr) {
+    ) external proposalExists(_proposalId) onlyRole(DEFAULT_ADMIN_ROLE) returns (address projectEscrowInstanceAddr) {
 
         Proposal memory tempProposal = proposals[_proposalId];
         if(projectLifecycle != PROJECT_LIFECYCLE.DELIBERATION) revert InvalidProjectLifecycle();
-
+        winningProposalId = _proposalId;
         projectLifecycle = PROJECT_LIFECYCLE.AWARDED;
 
         // This is the safe created by the official with all relevant parties
@@ -194,15 +195,14 @@ contract ProjectGovernance is Initializable, AccessControl {
         numberOfTotalMilestones += tempProposal.milestones.length;
 
         projectFactory.mintInitialSupplyForProject(projectEscrowInstanceAddr, tempProposal.cost);
-        _releaseDeposit(_proposalId);
 
-        winningProposal = tempProposal;
-
+        if(proposals[_proposalId].depositRequired) {
+            _releaseDeposit();
+        }
+        
     }
 
-    // All completion checks happen on the escrow contract before final payment
-    function completeProject() external {
-        if(msg.sender != address(projectEscrow)) revert NotRegisteredEscrow();
+    function _completeProject() internal {
         if(projectLifecycle != PROJECT_LIFECYCLE.AWARDED) revert InvalidProjectLifecycle();
 
         projectLifecycle = PROJECT_LIFECYCLE.COMPLETE;
@@ -236,12 +236,12 @@ contract ProjectGovernance is Initializable, AccessControl {
         uint256 _cost,
         address _adminWallet,
         address _fundWallet,
+        bool _depositRequired,
         Milestone[] memory _milestones
     ) external {
         if(projectLifecycle != PROJECT_LIFECYCLE.PROPOSAL) revert InvalidProjectLifecycle();
         if(block.timestamp > proposalDeadline) revert ProposalDeadlinePassed();
-        if(_milestones.length == 0) revert ZeroMilestones();
-        if(_milestones.length > MAX_MILESTONES) revert InvalidMilestoneCount();
+        if(_milestones.length <= 1 || _milestones.length > MAX_MILESTONES) revert InvalidMilestoneCount();
         if(_cost > budgetCap) revert BudgetTooHigh();
         if(_adminWallet == address(0) || _fundWallet == address(0)) revert AddressZero();
         if (
@@ -261,10 +261,12 @@ contract ProjectGovernance is Initializable, AccessControl {
         proposals[numberOfProposals] = Proposal({
             id: numberOfProposals,
             cost: _cost,
+            numberOfMilestonesReleased: 0,
             admin: _adminWallet,
             fundWallet: _fundWallet,
             specContentHash: _specContentHash,
             ipfsHash: _ipfsHash,
+            depositRequired: _depositRequired,
             milestones: _milestones
         });
 
@@ -272,7 +274,7 @@ contract ProjectGovernance is Initializable, AccessControl {
     }
 
     // Votes will be recorded on chain for transparency but also stored off-chain for ease of lookup
-    function voteForProposal(uint256 _proposalId) external ProposalExists(_proposalId) {
+    function voteForProposal(uint256 _proposalId) external proposalExists(_proposalId) {
         if(projectLifecycle != PROJECT_LIFECYCLE.VOTING) revert InvalidProjectLifecycle();
         if(hasVoted[msg.sender]) revert UserAlreadyVoted();
         numberOfVotesPerProposal[_proposalId]++;
@@ -286,12 +288,31 @@ contract ProjectGovernance is Initializable, AccessControl {
     // -----------------------------------------> MILESTONE CHANGES <--------------------------------------------
     // ----------------------------------------------------------------------------------------------------------
 
-    function _releaseDeposit(uint256 _proposalId) internal {
-        projectEscrow.releaseFunds(proposals[_proposalId].milestones[numberOfMilestonesReleased].amount);
-        numberOfMilestonesReleased++;
+    function completeAndReleaseMilestone(bytes32 _evidenceHash) external onlyRole(PROJECT_COMMITTEE) {
+        if(projectLifecycle != PROJECT_LIFECYCLE.AWARDED) revert InvalidProjectLifecycle();
+        if(_evidenceHash == bytes32(0)) revert InvalidHash();
+        _callReleaseAndUpdateStorage(_evidenceHash);
+
+        if(proposals[winningProposalId].numberOfMilestonesReleased == proposals[winningProposalId].milestones.length) {
+            _completeProject();
+        } 
     }
 
-    modifier ProposalExists(uint256 _proposalId) {
+    function _releaseDeposit() internal {
+        _callReleaseAndUpdateStorage(bytes32("Deposit"));
+    }
+
+    function _callReleaseAndUpdateStorage(bytes32 _evidenceHash) internal {
+        Proposal storage proposal = proposals[winningProposalId];
+        Milestone storage milestone = proposal.milestones[proposal.numberOfMilestonesReleased];
+        if(milestone.released) revert MilestoneAlreadyReleased();
+        proposal.numberOfMilestonesReleased++;
+        milestone.released = true;
+        milestone.evidenceHash = _evidenceHash;
+        projectEscrow.releaseFunds(milestone.amount);
+    }
+
+    modifier proposalExists(uint256 _proposalId) {
         if (_proposalId >= numberOfProposals) revert ProposalNonExistent();
         _;
     }
