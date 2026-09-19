@@ -3,8 +3,37 @@ via_ir = true
 src = "src"
 out = "out"
 libs = ["lib"]
+solc_version = "0.8.26"
 remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "@openzeppelin/contracts@4.9.6/=lib/openzeppelin-contracts-4.9.6/contracts/",
+    "@chainlink/contracts/=lib/chainlink-evm/contracts/",
 ]
+
+# Third-party deps (lib/**) are pinned and not ours to fix; the pinned
+# chainlink-evm mock triggers lint diagnostics that only make build output
+# noisy. Lint only our own code.
+[lint]
+# The pinned chainlink-evm VRF mock uses a pre-0.8.27 modifier-style base
+# constructor call. Solar emits that as a hard diagnostic with no lint ID,
+# and on Forge < 1.4 the `ignore` config is applied too late for it
+# (foundry-rs/foundry#12721), so it cannot be excluded by ID or path.
+# Disable lint-on-build entirely and run `forge lint` explicitly instead.
+lint_on_build = false
+ignore = ["lib/**"]
+# incorrect-shift is a known false positive on the idiomatic `1 << bit`
+# bitmask pattern used throughout ProjectEscrow.
+exclude_lints = ["incorrect-shift"]
+# Test fixtures deliberately use constants-style state variables
+# (AMOUNTS, EVIDENCE, ADMIN, BUILDER).
+mixed_case_exceptions = ["AMOUNTS", "EVIDENCE", "ADMIN", "BUILDER"]
+
+# Invariant fuzzing: 128 runs x 100 actions per run keeps the full-stack
+# lifecycle handler tractable in CI while still traversing the whole state
+# machine many times per run.
+[invariant]
+runs = 128
+depth = 100
+fail_on_revert = false
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
