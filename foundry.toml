@@ -1,5 +1,9 @@
 [profile.default]
 via_ir = true
+# Runs=1 keeps deployed bytecode under the 24,576-byte EIP-170 limit on
+# Arbitrum (Escrow/Factory exceed it at higher runs). Costs a bit more gas
+# per call - irrelevant on testnet and for a pilot.
+optimizer_runs = 1
 src = "src"
 out = "out"
 libs = ["lib"]
@@ -9,6 +13,9 @@ remappings = [
     "@openzeppelin/contracts@4.9.6/=lib/openzeppelin-contracts-4.9.6/contracts/",
     "@chainlink/contracts/=lib/chainlink-evm/contracts/",
 ]
+
+[etherscan]
+arbitrum_sepolia = { key = "${426W9XYPTC7GCUMIGBWIUHG9PY86NCTQVN}" }
 
 # Third-party deps (lib/**) are pinned and not ours to fix; the pinned
 # chainlink-evm mock triggers lint diagnostics that only make build output

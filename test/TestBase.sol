@@ -53,12 +53,12 @@ contract TestBase is Test {
     address[] memberAddrs;
     mapping(address => uint256) pkOf;
 
-    uint256 constant BUDGET_CAP = 5000;
-    uint256 constant COST = 1000;
-    uint256 constant COMMITTEE_FEE = 10;
+    uint256 constant BUDGET_CAP = 5000 * 1e18;
+    uint256 constant COST = 1000 * 1e18;
+    uint256 constant COMMITTEE_FEE = 10 * 1e18;
     uint256 constant COMPANY_ID = 1; // builder's registered company.
     /// forge-lint: disable-next-line(mixed-case-variable) // Fixture constants.
-    uint256[3] AMOUNTS = [uint256(300), uint256(300), uint256(400)];
+    uint256[3] AMOUNTS = [uint256(300) * 1e18, uint256(300) * 1e18, uint256(400) * 1e18];
     /// forge-lint: disable-next-line(mixed-case-variable) // Fixture constants.
     bytes32 EVIDENCE = keccak256("evidence");
 
@@ -92,7 +92,7 @@ contract TestBase is Test {
 
         registry = new CompanyRegistry();
         vm.prank(builder);
-        registry.registerCompany(builder, keccak256("builder company info"));
+        registry.registerCompany(keccak256("builder company info"));
 
         factory = new ProjectFactory(
             1 weeks, 1 weeks, 1 weeks, address(token), address(escrowImpl), creator, address(registry), vrfConfig
@@ -132,18 +132,54 @@ contract TestBase is Test {
     ///         uint256 array for direct escrow initialization.
     function _milestoneAmounts() internal pure returns (uint256[] memory amounts) {
         amounts = new uint256[](3);
-        amounts[0] = 300;
-        amounts[1] = 300;
-        amounts[2] = 400;
+        amounts[0] = 300 * 1e18;
+        amounts[1] = 300 * 1e18;
+        amounts[2] = 400 * 1e18;
     }
 
     /// @notice The same schedule as _milestoneAmounts, shaped as governance
     ///         Milestone structs for createProposal.
     function _proposalMilestones() internal pure returns (ProjectGovernance.Milestone[] memory milestones) {
         milestones = new ProjectGovernance.Milestone[](3);
-        milestones[0] = ProjectGovernance.Milestone(300, bytes32(0), false);
-        milestones[1] = ProjectGovernance.Milestone(300, bytes32(0), false);
-        milestones[2] = ProjectGovernance.Milestone(400, bytes32(0), false);
+        milestones[0] = ProjectGovernance.Milestone(300 * 1e18, bytes32(0), false);
+        milestones[1] = ProjectGovernance.Milestone(300 * 1e18, bytes32(0), false);
+        milestones[2] = ProjectGovernance.Milestone(400 * 1e18, bytes32(0), false);
+    }
+
+    /// The top-N shortlist by votes, ties all pass - mirrors the contract's
+    /// own verification in closeVoting.
+    function _shortlistFor(uint256 _n) internal view returns (uint256[] memory ids) {
+        uint256 count = governance.numberOfProposals();
+        uint256[] memory votes = new uint256[](count);
+        for (uint256 i; i < count; i++) {
+            votes[i] = governance.numberOfVotesPerProposal(i);
+        }
+        for (uint256 i = 1; i < count; i++) {
+            uint256 key = votes[i];
+            uint256 j = i;
+            while (j > 0 && votes[j - 1] > key) {
+                votes[j] = votes[j - 1];
+                j--;
+            }
+            votes[j] = key;
+        }
+        uint256 threshold = _n >= count ? 0 : votes[count - _n];
+        uint256 qualifying;
+        for (uint256 i; i < count; i++) {
+            if (governance.numberOfVotesPerProposal(i) >= threshold) qualifying++;
+        }
+        ids = new uint256[](qualifying);
+        uint256 idx;
+        for (uint256 i; i < count; i++) {
+            if (governance.numberOfVotesPerProposal(i) >= threshold) ids[idx++] = i;
+        }
+    }
+
+    /// Moves to deliberation with the top-N shortlist (ties all pass).
+    function _closeVoting(uint256 _n) internal {
+        uint256[] memory ids = _shortlistFor(_n);
+        vm.prank(admin);
+        governance.closeVoting(_n, ids);
     }
 
     /// Walks a full lifecycle: create -> proposals -> voting -> award.
@@ -169,8 +205,7 @@ contract TestBase is Test {
         governance.voteForProposal(0);
 
         vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(5);
+        _closeVoting(5);
 
         vm.prank(admin);
         governance.awardProposal(0);

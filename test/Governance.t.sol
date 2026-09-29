@@ -36,8 +36,7 @@ contract GovernanceTest is TestBase {
         governance.voteForProposal(1);
 
         vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(1);
+        _closeVoting(1);
 
         // Loser cannot be awarded.
         vm.prank(admin);
@@ -66,8 +65,7 @@ contract GovernanceTest is TestBase {
         governance.voteForProposal(1);
 
         vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(1);
+        _closeVoting(1);
 
         vm.prank(admin);
         governance.awardProposal(1);
@@ -80,17 +78,16 @@ contract GovernanceTest is TestBase {
         vm.prank(builder);
         governance.createProposal(COMPANY_ID, keccak256("s"), keccak256("i"), COST, false, _proposalMilestones());
 
-        vm.warp(block.timestamp + 9 days);
+        vm.warp(777601);
         vm.prank(admin);
         governance.closeProposalsAndOpenVoting();
         vm.prank(memberAddrs[0]);
         governance.voteForProposal(0);
 
-        vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(5);
+        vm.warp(1468801);
+        _closeVoting(5);
 
-        vm.warp(block.timestamp + 8 days); // past the 7-day deliberation window
+        vm.warp(2160001); // past the 7-day deliberation window
         vm.prank(admin);
         vm.expectRevert(ProjectGovernance.AwardDeadlinePassed.selector);
         governance.awardProposal(0);
@@ -99,25 +96,118 @@ contract GovernanceTest is TestBase {
     /// After awardDeadline anyone can expire the tender - nothing was funded.
     function testExpireDeliberationPermissionless() public {
         _deployProject();
+        vm.prank(builder);
+        governance.createProposal(COMPANY_ID, keccak256("s"), keccak256("i"), COST, false, _proposalMilestones());
 
-        vm.warp(block.timestamp + 9 days);
+        vm.warp(777601);
         vm.prank(admin);
         governance.closeProposalsAndOpenVoting();
 
-        vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(5);
+        vm.warp(1468801);
+        _closeVoting(5);
 
         // Before the deadline, expiry reverts.
         vm.expectRevert(ProjectGovernance.VotingStillOpen.selector);
         governance.expireDeliberation();
 
-        vm.warp(block.timestamp + 8 days);
+        vm.warp(2160001);
         governance.expireDeliberation();
 
         assertEq(uint8(governance.projectLifecycle()), uint8(ProjectGovernance.PROJECT_LIFECYCLE.CANCELLED));
         assertEq(address(governance.projectEscrow()), address(0));
         assertEq(token.totalSupply(), 0);
+    }
+
+    /// A tender with zero bids cannot open voting - the cycle stops.
+    function testNoProposalsCannotOpenVoting() public {
+        _deployProject();
+
+        vm.warp(block.timestamp + 9 days);
+        vm.prank(admin);
+        vm.expectRevert(ProjectGovernance.NoProposalsToVoteOn.selector);
+        governance.closeProposalsAndOpenVoting();
+
+        // Still in PROPOSAL; nothing can move forward.
+        assertEq(uint8(governance.projectLifecycle()), uint8(ProjectGovernance.PROJECT_LIFECYCLE.PROPOSAL));
+    }
+
+    // --------------------------------------------------------------------------
+    // ------------------------- DEADLINE EXTENSION ------------------------------
+    // --------------------------------------------------------------------------
+
+    /// The admin can extend the deadlines only in the dead-tender case: the
+    /// proposal deadline passed AND no company bid.
+    function testExtendProposalDeadlineOnlyWhenEmpty() public {
+        _deployProject();
+
+        // Before the proposal deadline: extension reverts.
+        vm.prank(admin);
+        vm.expectRevert(ProjectGovernance.ProposalsDurationTooShort.selector);
+        governance.extendProposalDeadline(1 days);
+
+        // With a bid on the table: extension reverts - the window was adequate.
+        // (The bid must exist before the deadline; after it, bids are blocked.)
+        vm.prank(builder);
+        governance.createProposal(COMPANY_ID, keccak256("s"), keccak256("i"), COST, false, _proposalMilestones());
+        vm.warp(block.timestamp + 9 days);
+        vm.prank(admin);
+        vm.expectRevert(ProjectGovernance.DeadlineExtensionOnlyWhenEmpty.selector);
+        governance.extendProposalDeadline(1 days);
+
+        // Zero extension reverts.
+        vm.prank(admin);
+        vm.expectRevert(ProjectGovernance.ZeroAmount.selector);
+        governance.extendProposalDeadline(0);
+
+        // A second tender with no bids: extension works.
+        vm.prank(creator);
+        address emptyAddr = factory.createProject(_projectConfig());
+        ProjectGovernance empty = ProjectGovernance(emptyAddr);
+        vm.prank(admin);
+        empty.acceptProposals();
+        uint64 emptyOldProposal = empty.proposalDeadline();
+        uint64 emptyOldVoting = empty.votingDeadline();
+        vm.warp(777601 + 9 days);
+        vm.prank(admin);
+        empty.extendProposalDeadline(3 days);
+
+        assertEq(empty.proposalDeadline(), emptyOldProposal + 3 days);
+        assertEq(empty.votingDeadline(), emptyOldVoting + 3 days);
+        // Both deadlines move together; the award window derives at closeVoting.
+        assertEq(uint8(empty.projectLifecycle()), uint8(ProjectGovernance.PROJECT_LIFECYCLE.PROPOSAL));
+    }
+
+    /// Only the admin (governance safe wallet) may extend deadlines.
+    function testExtendProposalDeadlineAdminOnly() public {
+        _deployProject();
+        vm.warp(block.timestamp + 9 days);
+
+        vm.prank(builder);
+        vm.expectRevert();
+        governance.extendProposalDeadline(1 days);
+    }
+
+    /// After an extension, proposals can be submitted again and the extended
+    /// voting deadline is time-enforced exactly like the original.
+    function testExtendedDeadlineAcceptsBidsAndEnforcesVotingWindow() public {
+        _deployProject();
+        vm.warp(block.timestamp + 9 days);
+        vm.prank(admin);
+        governance.extendProposalDeadline(5 days);
+
+        // Companies can still bid inside the extended window.
+        vm.prank(builder);
+        governance.createProposal(COMPANY_ID, keccak256("s"), keccak256("i"), COST, false, _proposalMilestones());
+
+        // Voting cannot open before the (extended) proposal deadline.
+        vm.prank(admin);
+        vm.expectRevert(ProjectGovernance.ProposalsDurationTooShort.selector);
+        governance.closeProposalsAndOpenVoting();
+
+        vm.warp(governance.proposalDeadline());
+        vm.prank(admin);
+        governance.closeProposalsAndOpenVoting();
+        assertEq(uint8(governance.projectLifecycle()), uint8(ProjectGovernance.PROJECT_LIFECYCLE.VOTING));
     }
 
     // --------------------------------------------------------------------------
@@ -203,7 +293,7 @@ contract GovernanceTest is TestBase {
     /// The committee fee is hard-capped by the factory.
     function testFeeCapEnforcedByFactory() public {
         IProjectConfig.ProjectConfig memory cfg = _projectConfig();
-        cfg.committeeFeePerSignature = 1001;
+        cfg.committeeFeePerSignature = 1001 * 1e18;
 
         vm.prank(creator);
         vm.expectRevert(ProjectFactory.FeeTooHigh.selector);
@@ -345,15 +435,14 @@ contract GovernanceTest is TestBase {
         vm.prank(builder);
         governance.createProposal(COMPANY_ID, keccak256("s"), keccak256("i"), COST, false, _proposalMilestones());
 
-        vm.warp(block.timestamp + 9 days);
+        vm.warp(777601);
         vm.prank(admin);
         governance.closeProposalsAndOpenVoting();
         vm.prank(memberAddrs[0]);
         governance.voteForProposal(0);
-        vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(5);
-        vm.warp(block.timestamp + 8 days); // award window elapsed
+        vm.warp(1468801);
+        _closeVoting(5);
+        vm.warp(2160001); // award window elapsed
         governance.expireDeliberation();
 
         vm.expectRevert(ProjectGovernance.InvalidProjectLifecycle.selector);
@@ -377,9 +466,9 @@ contract GovernanceTest is TestBase {
         _deployProject();
 
         ProjectGovernance.Milestone[] memory bad = new ProjectGovernance.Milestone[](3);
-        bad[0] = ProjectGovernance.Milestone(300, bytes32(0), true); // released!
-        bad[1] = ProjectGovernance.Milestone(300, bytes32(0), false);
-        bad[2] = ProjectGovernance.Milestone(400, bytes32(0), false);
+        bad[0] = ProjectGovernance.Milestone(300 * 1e18, bytes32(0), true); // released!
+        bad[1] = ProjectGovernance.Milestone(300 * 1e18, bytes32(0), false);
+        bad[2] = ProjectGovernance.Milestone(400 * 1e18, bytes32(0), false);
 
         vm.prank(builder);
         vm.expectRevert(ProjectGovernance.MilestoneReleased.selector);
@@ -411,7 +500,7 @@ contract GovernanceTest is TestBase {
     /// Creates two bids: company 1 (builder) and company 2 (memberAddrs[1]).
     function _twoCompanyBids() internal {
         vm.prank(memberAddrs[1]);
-        registry.registerCompany(memberAddrs[1], keccak256("second company"));
+        registry.registerCompany(keccak256("second company"));
 
         vm.prank(builder);
         governance.createProposal(COMPANY_ID, keccak256("s"), keccak256("i"), COST, false, _proposalMilestones());

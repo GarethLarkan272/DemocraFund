@@ -22,7 +22,7 @@ contract PaymentToken is ERC20, AccessControl {
     /// @notice Deploys the token.
     /// @param _admin The deployer's admin; receives DEFAULT_ADMIN_ROLE and is
     ///        the only actor who can later grant the FACTORY role.
-    constructor(address _admin) ERC20("Generic Example Stable", "GES") {
+    constructor(address _admin) ERC20("Humewood ZAR", "HZAR") {
         if (_admin == address(0)) revert AddressZero();
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
     }

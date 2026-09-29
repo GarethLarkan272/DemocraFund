@@ -115,8 +115,7 @@ contract FlowTest is TestBase {
         governance.voteForProposal(0);
 
         vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(5);
+        _closeVoting(5);
         vm.prank(admin);
         governance.awardProposal(0);
 
@@ -140,7 +139,7 @@ contract FlowTest is TestBase {
     /// winner awarded and executed.
     function testMultiCompanyFlowEndToEnd() public {
         vm.prank(memberAddrs[1]);
-        registry.registerCompany(memberAddrs[1], keccak256("second company"));
+        registry.registerCompany(keccak256("second company"));
         _deployProject();
 
         // 3 opt-ins so the award produces a real committee.
@@ -167,8 +166,7 @@ contract FlowTest is TestBase {
         governance.voteForProposal(1);
 
         vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(1);
+        _closeVoting(1);
 
         vm.prank(admin);
         vm.expectRevert(ProjectGovernance.NotInShortlist.selector);
@@ -182,7 +180,7 @@ contract FlowTest is TestBase {
         escrow.submitMilestoneComplete(EVIDENCE);
         escrow.approveMilestone(_milestoneSigs(0, EVIDENCE, toUint256Array(ADMIN_PK, 100)));
         assertEq(escrow.totalReleased(), AMOUNTS[0]);
-        assertEq(escrow.projectWallet(), builder); // company 1's payment wallet
+        assertEq(escrow.projectWallet(), builder); // company 1's admin (identity) wallet
     }
 
     /// The expiry journey: deliberation expires, anyone cancels, nothing was
@@ -192,17 +190,16 @@ contract FlowTest is TestBase {
         vm.prank(builder);
         governance.createProposal(COMPANY_ID, keccak256("s"), keccak256("i"), COST, false, _proposalMilestones());
 
-        vm.warp(block.timestamp + 9 days);
+        vm.warp(777601);
         vm.prank(admin);
         governance.closeProposalsAndOpenVoting();
         vm.prank(memberAddrs[0]);
         governance.voteForProposal(0);
 
-        vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(5);
+        vm.warp(1468801);
+        _closeVoting(5);
 
-        vm.warp(block.timestamp + 8 days); // award window elapsed
+        vm.warp(2160001); // award window elapsed
         governance.expireDeliberation();
 
         assertEq(uint8(governance.projectLifecycle()), uint8(ProjectGovernance.PROJECT_LIFECYCLE.CANCELLED));

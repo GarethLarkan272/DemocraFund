@@ -1,0 +1,21 @@
+{
+  "chain": "arbitrum-sepolia",
+  "chainId": 421614,
+  "deployedAt": "2026-09-19",
+  "deployer": "0xb21a23Cc54aFc3Bb4Aa30D21B1Db51905Bb3F12d",
+  "createProjectWallet": "0x136bBd11db4D0E524d480120E2BAE2E8bce271fB",
+  "payerWallet": "0x4760E07a257358EFA0045cAf615397315B86950C",
+  "vrf": {
+    "subscriptionId": "35152182209447658705524417127598446980824408461048413491098011822516358913899",
+    "coordinator": "0x5CE8D5A2BC84beb22a398CCA51996F7930313D61",
+    "keyHash": "0x1770bdc7eec7771f7ba4ffd640f34260d7f095b79c92d34a5b2551d6f6cfd2be"
+  },
+  "contracts": {
+    "PaymentToken": "0x249f87153FD7E6e8679A094f1C9ACf4B8Cac9A18",
+    "ProjectEscrowImplementation": "0x91Fb401De682b87767C7F2F47ea44b704b669043",
+    "CompanyRegistry": "0x477f174b5eCeBbB0F3178E523c9274703C632e85",
+    "Redemption": "0x9c2EeAEbe67836e3293a7b29206bB824971f5758",
+    "ProjectFactory": "0xfbf2224D797Aa55bb4d19D6b0b284EB056e4c36F",
+    "ProjectFactoryDemo2": "0x3EDDFb002Bf1c7d1ECB0E2307c30d92dA1BF1F59"
+  }
+}

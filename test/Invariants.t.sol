@@ -28,8 +28,8 @@ contract EscrowInvariantHandler is Test {
     address[] alts;
     mapping(address => uint256) internal pkOf;
 
-    uint256 internal constant BUDGET = 1000;
-    uint256 internal constant FEE = 10;
+    uint256 internal constant BUDGET = 1000 * 1e18;
+    uint256 internal constant FEE = 10 * 1e18;
     bytes32 internal constant EVIDENCE = keccak256("evidence");
     bytes32 internal constant REASON = keccak256("cancel-reason"); // one shared, locked reason
 
@@ -227,9 +227,9 @@ contract EscrowInvariantHandler is Test {
 
     function _amounts() internal pure returns (uint256[] memory amounts) {
         amounts = new uint256[](3);
-        amounts[0] = 300;
-        amounts[1] = 300;
-        amounts[2] = 400;
+        amounts[0] = 300 * 1e18;
+        amounts[1] = 300 * 1e18;
+        amounts[2] = 400 * 1e18;
     }
 
     uint256 internal constant ADMIN_PK = 1001;

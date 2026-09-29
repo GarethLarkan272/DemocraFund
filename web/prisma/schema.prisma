@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  email        String?
+  passwordHash String
+  role         String   @default("member") // member | company | committee | payer
+  createdAt    DateTime @default(now())
+  company      Company?
+  documents    Document[]
+}
+
+model Company {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  onChainId   Int     @unique
+  adminWallet String  @unique
+  infoHash    String
+  active      Boolean @default(true)
+  user        User    @relation(fields: [userId], references: [id])
+  userId      Int     @unique
+}
+
+model Project {
+  id             Int        @id @default(autoincrement())
+  governance     String     @unique
+  factory        String
+  title          String
+  department     String
+  category       String
+  description    String?
+  ipfsHash       String
+  escrowAddress  String? // set when the tender is awarded; the provenance recorded on redemption receipts
+  createdAt      DateTime   @default(now())
+  documents      Document[]
+  proposals      Proposal[]
+}
+
+// Off-chain mirror of bids: the on-chain proposals getter omits the dynamic
+// milestones array (solc getter quirk), so the app records what it submitted.
+// The escrow's milestone schedule remains the on-chain source of truth.
+model Proposal {
+  id             Int        @id @default(autoincrement())
+  governance     String
+  proposalId     Int
+  companyName    String
+  cost           String
+  milestones     String // JSON array of amounts
+  specContentHash String
+  ipfsHash       String
+  depositRequired Boolean
+  createdAt      DateTime   @default(now())
+  documents      Document[]
+  project        Project    @relation(fields: [governance], references: [governance])
+  @@unique([governance, proposalId])
+}
+
+model IndexState {
+  id        Int  @id
+  lastBlock BigInt
+}
+
+model Document {
+  id          Int      @id @default(autoincrement())
+  kind        String // tender | proposal | evidence
+  contentHash String
+  fileName    String
+  mimeType    String
+  data        Bytes
+  projectId   Int?
+  proposalId  Int?
+  uploadedBy  Int?
+  uploadedAt  DateTime @default(now())
+  project     Project? @relation(fields: [projectId], references: [id])
+  proposal    Proposal? @relation(fields: [proposalId], references: [id])
+  user        User?    @relation(fields: [uploadedBy], references: [id])
+}

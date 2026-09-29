@@ -444,8 +444,7 @@ contract ProjectEscrowTest is TestBase {
         governance.voteForProposal(0);
 
         vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(5);
+        _closeVoting(5);
         vm.prank(admin);
         governance.awardProposal(0);
 
@@ -499,18 +498,15 @@ contract ProjectEscrowTest is TestBase {
     // ------------------------------ COMPANY REGISTRY --------------------------
     // --------------------------------------------------------------------------
 
-    /// Registration stores the minimum set: sequential id, admin wallet,
-    /// payment wallet and information hash (read via the public mapping
-    /// getter).
+    /// Registration stores the minimum set: sequential id, admin wallet and
+    /// information hash (read via the public mapping getter).
     function testCompanyRegistrationStoresData() public {
         vm.prank(memberAddrs[0]);
-        uint256 companyId = registry.registerCompany(paymentWallet, keccak256("second company info"));
+        uint256 companyId = registry.registerCompany(keccak256("second company info"));
 
         assertEq(companyId, 2);
-        (address adminWallet, address companyPaymentWallet, bytes32 infoHash, bool companyActive) =
-            registry.companies(companyId);
+        (address adminWallet, bytes32 infoHash, bool companyActive) = registry.companies(companyId);
         assertEq(adminWallet, memberAddrs[0]);
-        assertEq(companyPaymentWallet, paymentWallet);
         assertEq(infoHash, keccak256("second company info"));
         assertTrue(companyActive);
         assertEq(registry.companyIdOfAdmin(memberAddrs[0]), companyId);
@@ -520,21 +516,20 @@ contract ProjectEscrowTest is TestBase {
     function testCompanyDuplicateAdminRejected() public {
         vm.prank(builder);
         vm.expectRevert(CompanyRegistry.AlreadyRegistered.selector);
-        registry.registerCompany(paymentWallet, keccak256("dup"));
+        registry.registerCompany(keccak256("dup"));
     }
 
     /// Only the company admin can update; changes are reflected on read.
     function testCompanyUpdateByAdminOnly() public {
         vm.prank(outsider);
         vm.expectRevert(CompanyRegistry.NotRegistered.selector);
-        registry.updateCompany(paymentWallet, keccak256("hijack"));
+        registry.updateCompany(keccak256("hijack"));
 
         vm.prank(builder);
-        registry.updateCompany(paymentWallet, keccak256("new info"));
+        registry.updateCompany(keccak256("new info"));
 
-        (address updatedAdmin, address updatedPaymentWallet, bytes32 updatedInfoHash,) = registry.companies(COMPANY_ID);
+        (address updatedAdmin, bytes32 updatedInfoHash,) = registry.companies(COMPANY_ID);
         assertEq(updatedAdmin, builder);
-        assertEq(updatedPaymentWallet, paymentWallet);
         assertEq(updatedInfoHash, keccak256("new info"));
     }
 
@@ -556,7 +551,7 @@ contract ProjectEscrowTest is TestBase {
     /// even if the caller is another registered company.
     function testProposalRequiresCompanyAdmin() public {
         vm.prank(memberAddrs[0]);
-        registry.registerCompany(builder, keccak256("second company"));
+        registry.registerCompany(keccak256("second company"));
         _deployProject();
 
         vm.prank(memberAddrs[0]);
@@ -564,11 +559,11 @@ contract ProjectEscrowTest is TestBase {
         governance.createProposal(COMPANY_ID, keccak256("s"), keccak256("i"), COST, false, _proposalMilestones());
     }
 
-    /// Proposals read wallets from the registry: the company's payment wallet
+    /// Proposals read wallets from the registry: the company's admin wallet
     /// becomes the fund wallet and the escrow's builder signer.
-    function testProposalUsesCompanyPaymentWallet() public {
-        vm.prank(memberAddrs[0]);
-        registry.registerCompany(paymentWallet, keccak256("second company"));
+    function testProposalUsesCompanyAdminWallet() public {
+        vm.prank(memberAddrs[3]);
+        registry.registerCompany(keccak256("second company"));
         _deployProject();
 
         for (uint256 i; i < 3; i++) {
@@ -576,7 +571,7 @@ contract ProjectEscrowTest is TestBase {
             governance.optInForCommittee();
         }
 
-        vm.prank(memberAddrs[0]);
+        vm.prank(memberAddrs[3]);
         governance.createProposal(
             2, keccak256("proposal-spec"), keccak256("proposal-ipfs"), COST, false, _proposalMilestones()
         );
@@ -588,8 +583,7 @@ contract ProjectEscrowTest is TestBase {
         governance.voteForProposal(0);
 
         vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(5);
+        _closeVoting(5);
         vm.prank(admin);
         governance.awardProposal(0);
 
@@ -598,16 +592,16 @@ contract ProjectEscrowTest is TestBase {
         // The proposal carried no wallets: they came from the registry.
         // (The public getter flattens the struct without the dynamic array.)
         (,, address proposalAdmin,,,,) = governance.proposals(0);
-        assertEq(proposalAdmin, memberAddrs[0]);
-        assertEq(escrow.projectWallet(), paymentWallet);
-        assertEq(escrow.builderSigner(), paymentWallet);
+        assertEq(proposalAdmin, memberAddrs[3]);
+        assertEq(escrow.projectWallet(), memberAddrs[3]);
+        assertEq(escrow.builderSigner(), memberAddrs[3]);
 
-        // The builder (payment wallet) can run the escrow normally.
-        vm.prank(paymentWallet);
+        // The builder (the company's admin wallet) can run the escrow normally.
+        vm.prank(memberAddrs[3]);
         escrow.submitMilestoneComplete(EVIDENCE);
-        escrow.approveMilestone(_milestoneSigs(0, EVIDENCE, toUint256Array(ADMIN_PK, 100)));
+        escrow.approveMilestone(_milestoneSigs(0, EVIDENCE, toUint256Array(ADMIN_PK, 101)));
         assertEq(escrow.totalReleased(), AMOUNTS[0]);
-        assertEq(token.balanceOf(paymentWallet), AMOUNTS[0]);
+        assertEq(token.balanceOf(memberAddrs[3]), AMOUNTS[0]);
     }
 
     // --------------------------------------------------------------------------
@@ -723,14 +717,14 @@ contract ProjectEscrowTest is TestBase {
         _setMembers(toUint256Array(100, 101, 102), new uint256[](0));
 
         vm.prank(gov);
-        escrow.releaseSettlement(100);
-        assertEq(token.balanceOf(builder), 100);
+        escrow.releaseSettlement(100 * 1e18);
+        assertEq(token.balanceOf(builder), 100 * 1e18);
 
         bytes32 reason = keccak256("abandoned");
         escrow.approveCancellation(reason, _cancellationSigs(reason, toUint256Array(100, 101, 102, ADMIN_PK)));
 
         assertTrue(escrow.cancelled());
-        assertEq(token.balanceOf(treasury), COST + escrow.feeReserve() - 100);
+        assertEq(token.balanceOf(treasury), COST + escrow.feeReserve() - 100 * 1e18);
     }
 
     // --------------------------------------------------------------------------
@@ -964,9 +958,10 @@ contract ProjectEscrowTest is TestBase {
         governance.closeProposalsAndOpenVoting();
 
         // Cannot close voting before the deadline.
+        uint256[] memory preDeadlineShortlist = _shortlistFor(5);
         vm.prank(admin);
         vm.expectRevert(ProjectGovernance.VotingStillOpen.selector);
-        governance.closeVoting(5);
+        governance.closeVoting(5, preDeadlineShortlist);
 
         // Vote before deadline works.
         vm.prank(memberAddrs[0]);
@@ -979,9 +974,78 @@ contract ProjectEscrowTest is TestBase {
         governance.voteForProposal(0);
 
         // And only now can voting be closed.
-        vm.prank(admin);
-        governance.closeVoting(5);
+        _closeVoting(5);
         assertEq(uint8(governance.projectLifecycle()), uint8(ProjectGovernance.PROJECT_LIFECYCLE.DELIBERATION));
+    }
+
+    /// The shortlist is verified on-chain against the vote record: a
+    /// proposal outside the top-N (or a missing tied qualifier) is rejected,
+    /// and the stored shortlist matches the votes exactly.
+    function testShortlistVerifiedAgainstVotes() public {
+        vm.prank(creator);
+        address governanceAddr = factory.createProject(_projectConfig());
+        governance = ProjectGovernance(governanceAddr);
+
+        vm.prank(admin);
+        governance.acceptProposals();
+        vm.prank(builder);
+        governance.createProposal(
+            COMPANY_ID, keccak256("proposal-spec"), keccak256("proposal-ipfs"), COST, false, _proposalMilestones()
+        );
+        vm.prank(memberAddrs[1]);
+        registry.registerCompany(keccak256("second company"));
+        vm.prank(memberAddrs[1]);
+        governance.createProposal(2, keccak256("s2"), keccak256("i2"), COST, false, _proposalMilestones());
+        vm.prank(memberAddrs[2]);
+        registry.registerCompany(keccak256("third company"));
+        vm.prank(memberAddrs[2]);
+        governance.createProposal(3, keccak256("s3"), keccak256("i3"), COST, false, _proposalMilestones());
+
+        vm.warp(block.timestamp + 9 days);
+        vm.prank(admin);
+        governance.closeProposalsAndOpenVoting();
+
+        // Two votes for proposal 0, one for proposal 1; proposal 2 gets none.
+        vm.prank(memberAddrs[0]);
+        governance.voteForProposal(0);
+        vm.prank(memberAddrs[1]);
+        governance.voteForProposal(0);
+        vm.prank(memberAddrs[2]);
+        governance.voteForProposal(1);
+
+        vm.warp(governance.votingDeadline());
+
+        // Omitting the leader (proposal 0) is rejected: the shortlist must be
+        // exactly the qualifying set.
+        uint256[] memory missingLeader = new uint256[](1);
+        missingLeader[0] = 1;
+        vm.prank(admin);
+        vm.expectRevert(ProjectGovernance.InvalidShortlist.selector);
+        governance.closeVoting(2, missingLeader);
+
+        // Including a loser alongside the leaders is rejected too.
+        uint256[] memory withLoser = new uint256[](3);
+        withLoser[0] = 0;
+        withLoser[1] = 1;
+        withLoser[2] = 2;
+        vm.prank(admin);
+        vm.expectRevert(ProjectGovernance.NotInShortlist.selector);
+        governance.closeVoting(2, withLoser);
+
+        // The honest shortlist (the two vote leaders) passes and is stored.
+        uint256[] memory honest = _shortlistFor(2);
+        assertEq(honest.length, 2);
+        vm.prank(admin);
+        governance.closeVoting(2, honest);
+
+        assertEq(governance.shortlistProposalIds(0), 0);
+        assertEq(governance.shortlistProposalIds(1), 1);
+        assertEq(governance.shortlistCount(), 2);
+
+        // Awarding the off-shortlist loser is impossible.
+        vm.prank(admin);
+        vm.expectRevert(ProjectGovernance.NotInShortlist.selector);
+        governance.awardProposal(2);
     }
 
     // --------------------------------------------------------------------------
@@ -1014,8 +1078,7 @@ contract ProjectEscrowTest is TestBase {
         vm.prank(admin);
         governance.closeProposalsAndOpenVoting();
         vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(5);
+        _closeVoting(5);
 
         vm.prank(admin);
         governance.awardProposal(0);
@@ -1109,8 +1172,7 @@ contract ProjectEscrowTest is TestBase {
             ProjectGovernance.PROJECT_LIFECYCLE.VOTING, ProjectGovernance.PROJECT_LIFECYCLE.DELIBERATION
         );
         vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(5);
+        _closeVoting(5);
 
         // Nonce 1: contract accounts start at nonce 1, so the clone is
         // governance's first CREATE.
@@ -1150,22 +1212,22 @@ contract ProjectEscrowTest is TestBase {
         escrow.submitMilestoneComplete(EVIDENCE);
 
         vm.expectEmit(true, false, false, true, address(escrow));
-        emit ProjectEscrow.SettlementPaid(100);
+        emit ProjectEscrow.SettlementPaid(100 * 1e18);
         vm.prank(admin);
-        governance.releaseSettlement(100);
+        governance.releaseSettlement(100 * 1e18);
     }
 
     /// Company registration and updates announce on-chain.
     function testCompanyRegistryEventsEmitted() public {
         vm.expectEmit(true, true, false, true, address(registry));
-        emit CompanyRegistry.CompanyRegistered(2, memberAddrs[0], paymentWallet, keccak256("second company"));
+        emit CompanyRegistry.CompanyRegistered(2, memberAddrs[0], keccak256("second company"));
         vm.prank(memberAddrs[0]);
-        registry.registerCompany(paymentWallet, keccak256("second company"));
+        registry.registerCompany(keccak256("second company"));
 
         vm.expectEmit(true, true, false, true, address(registry));
-        emit CompanyRegistry.CompanyUpdated(COMPANY_ID, paymentWallet, keccak256("new info"));
+        emit CompanyRegistry.CompanyUpdated(COMPANY_ID, keccak256("new info"));
         vm.prank(builder);
-        registry.updateCompany(paymentWallet, keccak256("new info"));
+        registry.updateCompany(keccak256("new info"));
     }
 
     // --------------------------------------------------------------------------
@@ -1549,8 +1611,8 @@ contract ProjectEscrowTest is TestBase {
         // Completion sweeps the surplus (90 - 40 = 50) to the treasury.
         vm.prank(admin);
         governance.completeProject();
-        assertEq(escrow.totalSweptToTreasury(), 50);
-        assertEq(token.balanceOf(treasury), 50);
+        assertEq(escrow.totalSweptToTreasury(), 50 * 1e18);
+        assertEq(token.balanceOf(treasury), 50 * 1e18);
         assertEq(token.balanceOf(address(escrow)), 4 * COMMITTEE_FEE);
 
         // The members' accrued fees remain collectable, without a deadline.
@@ -1567,8 +1629,8 @@ contract ProjectEscrowTest is TestBase {
         // The surplus sweep is idempotent: a second call sweeps nothing.
         vm.prank(address(governance));
         escrow.sweepSurplusToTreasury();
-        assertEq(escrow.totalSweptToTreasury(), 50);
-        assertEq(token.balanceOf(treasury), 50);
+        assertEq(escrow.totalSweptToTreasury(), 50 * 1e18);
+        assertEq(token.balanceOf(treasury), 50 * 1e18);
     }
 
     // --------------------------------------------------------------------------

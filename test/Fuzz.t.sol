@@ -70,7 +70,7 @@ contract FuzzTest is TestBase {
         uint256[] memory amounts = new uint256[](_count);
         uint256 sum;
         for (uint256 i; i < _count; i++) {
-            amounts[i] = 1 + (uint256(keccak256(abi.encode(_seed, i))) % 1000);
+            amounts[i] = (1 + (uint256(keccak256(abi.encode(_seed, i))) % 1000)) * 1e18;
             sum += amounts[i];
         }
         _budget = bound(_budget, 1, type(uint256).max);
@@ -149,14 +149,13 @@ contract FuzzTest is TestBase {
         vm.prank(builder);
         governance.createProposal(COMPANY_ID, keccak256("s"), keccak256("i"), COST, false, _proposalMilestones());
 
-        vm.warp(block.timestamp + 9 days);
+        vm.warp(777601);
         vm.prank(admin);
         governance.closeProposalsAndOpenVoting();
         vm.prank(memberAddrs[0]);
         governance.voteForProposal(0);
-        vm.warp(block.timestamp + 8 days);
-        vm.prank(admin);
-        governance.closeVoting(5);
+        vm.warp(1468801);
+        _closeVoting(5);
         vm.prank(admin);
         governance.awardProposal(0);
 

@@ -40,6 +40,7 @@ The same structural argument that makes a golf club pilot compelling becomes ove
 
 - **Production deploy tooling.** Fill in the VRF `subscriptionId`, automated consumer registration, multi-sig governance for the platform roles, and a deployment verification flow (contract verification, admin UI, block-explorer dashboard for the demo).
 - **A frontend.** Members need a simple app: view tenders, vote, opt in, approve stages ("Approve stage" with evidence preview), see the escrow balance and every payment.
+- **A bank-style money-flow page.** Block explorers are the wrong interface for people. Where the MVP links out to Arbiscan to prove a payment, the future app shows a plain-language statement: every transaction in and out of every escrow — funding, releases, fees, refunds, sweeps — as rows in a ledger the way a bank presents your account, not a raw database dump. The block-explorer link stays, but as the audit trail *underneath* the human-readable view, not the view itself.
 - **Off-ramp polish.** The manual admin burn-bridge becomes a documented operations runbook with reconciliation (every receipt NFT ↔ every fiat payout), then a licensed payment processor integration.
 - **Deputy-admin mechanism.** A single official signer is the MVP's weakest operational point; a designated deputy (with role-based fallback) is the first governance upgrade.
 

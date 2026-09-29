@@ -114,6 +114,13 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
     mapping(uint256 proposalId => uint256 proposalVotes) public numberOfVotesPerProposal;
     mapping(address user => bool voted) public hasVoted;
 
+    // The shortlist fixed at closeVoting: the exact set of proposals the
+    // committee may deliberate over and award (top-N by votes, ties all pass).
+    // Stored on-chain so the award is verifiable against the vote record, not
+    // just the shortlist size.
+    uint256[] public shortlistProposalIds;
+    uint256 public shortlistCount;
+
     // Committee opt-in pool - ids are contiguous, so optedInById[pick] indexes
     // exactly like an array would, without storing a full array.
     mapping(address => bool) public optedIn;
@@ -130,7 +137,7 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
     uint256 public constant MAX_ALTERNATES = 2;
     uint256 public constant MAX_MILESTONES = 24;
     uint256 public constant SELECTION_RETRY_DELAY = 7 days; // After this, anyone may re-request or abort a pending draw.
-    uint256 public constant MAX_COMMITTEE_FEE_PER_SIGNATURE = 1000; // Mirrors ProjectFactory's cap (defense in depth).
+    uint256 public constant MAX_COMMITTEE_FEE_PER_SIGNATURE = 1000 * 1e18; // Mirrors ProjectFactory's cap (defense in depth).
 
     // --------------------------------------------------------------------------
     // -----------------------------------> ERRORS / EVENTS <---------------------
@@ -160,15 +167,22 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
     error InsufficientRandomWords();
     error UnauthorisedCalled();
     error NotInShortlist();
+    error InvalidShortlist();
+    error DuplicateShortlistEntry();
+    error NoProposalsToVoteOn();
     error AwardDeadlinePassed();
     error AlreadySubmittedProposal();
     error CompanyNotActive();
+    error ProposalsNotClosed();
+    error DeadlineExtensionOnlyWhenEmpty();
 
     event VoteCast(address indexed voter, uint256 indexed proposalId);
+    event ShortlistFixed(uint256[] proposalIds);
     event CommitteeOptIn(address indexed member);
     event CommitteeSelectionRequested(uint256 indexed requestId, uint256 poolSize);
     event CommitteeSelected(address[] members, address[] alternates);
     event ProjectLifecycleChanged(PROJECT_LIFECYCLE indexed from, PROJECT_LIFECYCLE indexed to);
+    event DeadlinesExtended(uint64 proposalDeadline, uint64 votingDeadline);
     event ProposalCreated(
         uint256 indexed proposalId, uint256 indexed companyId, address indexed companyAdmin, uint256 cost
     );
@@ -245,28 +259,105 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
 
     /// @notice Closes proposals and opens voting.
     /// @dev PROPOSAL -> VOTING. Admin only, and only once the proposal deadline
-    ///      has passed - the window length is enforced, not advisory.
+    ///      has passed - the window length is enforced, not advisory. A tender
+    ///      with zero proposals cannot progress: voting on nothing is
+    ///      meaningless, so the cycle stops here until the admin deals with it.
+    ///      (Future: allow the admin to nominate a company in the no-bids case.)
     function closeProposalsAndOpenVoting() external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (projectLifecycle != PROJECT_LIFECYCLE.PROPOSAL) revert InvalidProjectLifecycle();
         if (block.timestamp < proposalDeadline) revert ProposalsDurationTooShort();
+        if (numberOfProposals == 0) revert NoProposalsToVoteOn();
 
         projectLifecycle = PROJECT_LIFECYCLE.VOTING;
         emit ProjectLifecycleChanged(PROJECT_LIFECYCLE.PROPOSAL, PROJECT_LIFECYCLE.VOTING);
     }
 
-    /// @notice Closes voting and moves to deliberation.
+    /// @notice Extends the proposal window when a tender attracted no bids.
+    /// @param _extension How long to add to the proposal deadline.
+    /// @dev PROPOSAL only, admin only, and ONLY in the dead-tender case: the
+    ///      proposal deadline must have passed AND no company may have bid.
+    ///      With proposals on the table the window was adequate - the admin
+    ///      must close voting instead. Shifting the proposal deadline also
+    ///      shifts the voting deadline by the same amount (the award window
+    ///      derives from the voting deadline at closeVoting), so every
+    ///      remaining deadline moves together.
+    function extendProposalDeadline(uint64 _extension) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (projectLifecycle != PROJECT_LIFECYCLE.PROPOSAL) revert InvalidProjectLifecycle();
+        if (_extension == 0) revert ZeroAmount();
+        if (block.timestamp < proposalDeadline) revert ProposalsDurationTooShort();
+        if (numberOfProposals > 0) revert DeadlineExtensionOnlyWhenEmpty();
+
+        proposalDeadline += _extension;
+        votingDeadline += _extension;
+        emit DeadlinesExtended(proposalDeadline, votingDeadline);
+    }
+
+    /// @notice Closes voting and moves to deliberation, fixing the shortlist.
     /// @param _numberOfShortlistedProjects How many top proposals the committee
     ///        will deliberate over (visible to the public for transparency).
+    /// @param _shortlistProposalIds The exact proposal ids in the shortlist.
+    ///        Verified on-chain: must be precisely the top
+    ///        _numberOfShortlistedProjects by vote count, with boundary ties
+    ///        all admitted (a shortlist of 5 with 8 tied leaders admits all 8).
     /// @dev VOTING -> DELIBERATION. Admin only. Voting closes by time, not by
-    ///      admin whim - the deadline was fixed at creation.
-    function closeVoting(uint256 _numberOfShortlistedProjects) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    ///      admin whim - the deadline was fixed at creation. The shortlist is
+    ///      committed here so the award can only ever pick from it.
+    function closeVoting(uint256 _numberOfShortlistedProjects, uint256[] calldata _shortlistProposalIds)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         if (_numberOfShortlistedProjects == 0) revert ZeroAmount();
         if (projectLifecycle != PROJECT_LIFECYCLE.VOTING) revert InvalidProjectLifecycle();
         if (block.timestamp < votingDeadline) revert VotingStillOpen();
+        if (_numberOfShortlistedProjects > numberOfProposals) {
+            // N can't exceed the pool; everyone qualifies (ties all pass).
+            _numberOfShortlistedProjects = numberOfProposals;
+        }
+        if (_shortlistProposalIds.length < _numberOfShortlistedProjects) revert InvalidShortlist();
+
+        // The vote threshold: a proposal is shortlisted iff its votes are at
+        // least the votes of the Nth-highest proposal (ties all pass). Find
+        // the Nth-highest vote count by sorting a copy of the vote counts.
+        uint256[] memory voteCounts = new uint256[](numberOfProposals);
+        for (uint256 i; i < numberOfProposals; i++) {
+            voteCounts[i] = numberOfVotesPerProposal[i];
+        }
+        uint256 threshold;
+        if (numberOfProposals > 0) {
+            // Insertion sort (ascending) - proposal counts are tiny (club scale).
+            for (uint256 i = 1; i < voteCounts.length; i++) {
+                uint256 key = voteCounts[i];
+                uint256 j = i;
+                while (j > 0 && voteCounts[j - 1] > key) {
+                    voteCounts[j] = voteCounts[j - 1];
+                    j--;
+                }
+                voteCounts[j] = key;
+            }
+            threshold = voteCounts[voteCounts.length - _numberOfShortlistedProjects];
+        }
+
+        // Verify the submitted ids are EXACTLY the qualifying set: no dupes,
+        // all ids valid, every one meets the threshold, and none of the
+        // qualifying proposals is missing.
+        bool[] memory seen = new bool[](numberOfProposals);
+        for (uint256 i; i < _shortlistProposalIds.length; i++) {
+            uint256 id = _shortlistProposalIds[i];
+            if (id >= numberOfProposals) revert ProposalNonExistent();
+            if (seen[id]) revert DuplicateShortlistEntry();
+            if (numberOfVotesPerProposal[id] < threshold) revert NotInShortlist();
+            seen[id] = true;
+        }
+        for (uint256 i; i < numberOfProposals; i++) {
+            if (numberOfVotesPerProposal[i] >= threshold && !seen[i]) revert InvalidShortlist();
+        }
 
         projectLifecycle = PROJECT_LIFECYCLE.DELIBERATION;
         numberOfShortlistedProjects = _numberOfShortlistedProjects;
+        shortlistProposalIds = _shortlistProposalIds;
+        shortlistCount = _shortlistProposalIds.length;
         awardDeadline = block.timestamp + deliberationWindow;
+        emit ShortlistFixed(_shortlistProposalIds);
         emit ProjectLifecycleChanged(PROJECT_LIFECYCLE.VOTING, PROJECT_LIFECYCLE.DELIBERATION);
     }
 
@@ -567,17 +658,19 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
         }
     }
 
-    /// @dev Binds the award to the votes: reverts unless the proposal is
-    ///      among the top numberOfShortlistedProjects by vote count. The
-    ///      check counts proposals with strictly more votes, so boundary
-    ///      ties all pass (a shortlist of 5 with 8 tied leaders admits all 8).
+    /// @dev Binds the award to the votes: reverts unless the proposal is in the
+    ///      shortlist committed at closeVoting (top-N by votes, ties all pass).
+    ///      Membership in the stored array is the check - the array itself was
+    ///      verified against the vote record when it was fixed.
     function _requireInShortlist(uint256 _proposalId) internal view {
-        uint256 votes = numberOfVotesPerProposal[_proposalId];
-        uint256 strictlyMore;
-        for (uint256 i; i < numberOfProposals; i++) {
-            if (numberOfVotesPerProposal[i] > votes) strictlyMore++;
+        bool found;
+        for (uint256 i; i < shortlistProposalIds.length; i++) {
+            if (shortlistProposalIds[i] == _proposalId) {
+                found = true;
+                break;
+            }
         }
-        if (strictlyMore >= numberOfShortlistedProjects) revert NotInShortlist();
+        if (!found) revert NotInShortlist();
     }
 
     // --------------------------------------------------------------------------
@@ -616,8 +709,7 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
         if (_specContentHash == bytes32(0) || _ipfsHash == bytes32(0)) revert InvalidHash();
         if (companyHasProposal[_companyId]) revert AlreadySubmittedProposal();
 
-        (address companyAdminWallet, address companyPaymentWallet,, bool companyActive) =
-            companyRegistry.companies(_companyId);
+        (address companyAdminWallet,, bool companyActive) = companyRegistry.companies(_companyId);
         if (!companyActive) revert CompanyNotActive();
         if (companyAdminWallet != msg.sender) revert UnauthorisedCalled();
 
@@ -638,7 +730,7 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
         proposal.id = numberOfProposals;
         proposal.cost = _cost;
         proposal.admin = companyAdminWallet;
-        proposal.fundWallet = companyPaymentWallet;
+        proposal.fundWallet = companyAdminWallet; // payouts land in the identity wallet
         proposal.specContentHash = _specContentHash;
         proposal.ipfsHash = _ipfsHash;
         proposal.depositRequired = _depositRequired;

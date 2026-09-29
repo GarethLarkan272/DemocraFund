@@ -15,6 +15,16 @@ import {IVRFSubscriptionV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/inte
 ///         Usage (Arbitrum Sepolia):
 ///           forge script script/Deploy.s.sol:Deploy --rpc-url $ARB_SEPOLIA_RPC --broadcast
 ///
+///         Verify all contracts at deploy time (same command, adds the flag):
+///           ETHERSCAN_API_KEY=$ETHERSCAN_API_KEY \
+///           forge script script/Deploy.s.sol:Deploy \
+///             --rpc-url $ARB_SEPOLIA_RPC --broadcast --verify
+///
+///         (Arbiscan uses Etherscan API keys. `--verify` waits for each
+///         contract's tx to confirm, then submits the source for verification
+///         with the exact compiler settings from foundry.toml - via_ir and
+///         optimizer_runs=1 must match, and foundry records them automatically.)
+///
 ///         Before the demo, in the VRF Subscription Manager (vrf.chain.link):
 ///           1. Create a subscription, fund it with LINK (faucets.chain.link).
 ///           2. Add each deployed project's governance contract as a consumer
@@ -26,18 +36,26 @@ contract Deploy is Script {
     bytes32 public constant ARBITRUM_SEPOLIA_KEYHASH_50_GWEI =
         0x1770bdc7eec7771f7ba4ffd640f34260d7f095b79c92d34a5b2551d6f6cfd2be;
     uint16 public constant REQUEST_CONFIRMATIONS = 3;
-    uint32 public constant CALLBACK_GAS_LIMIT = 300_000;
+    uint32 public constant CALLBACK_GAS_LIMIT = 500_000; // Committee draw needs ~403k (VRF wrapper + escrow call); 300k silently OOGs and stalls the draw.
 
-    uint64 public constant MIN_PROPOSAL_SUBMISSION = 1 weeks;
-    uint64 public constant MIN_VOTING = 1 weeks;
-    uint256 public constant GLOBAL_MIN_VOTING = 1 weeks;
+    // Duration floors. Test deployments set these low (e.g. 60) so the full
+    // lifecycle can be exercised in minutes; production should use weeks.
+    uint64 public immutable minProposalSubmission;
+    uint64 public immutable minVoting;
+    uint256 public immutable globalMinVoting;
+
+    constructor() {
+        minProposalSubmission = uint64(vm.envOr("MIN_PROPOSAL_SUBMISSION", uint256(1 weeks)));
+        minVoting = uint64(vm.envOr("MIN_VOTING", uint256(1 weeks)));
+        globalMinVoting = vm.envOr("MIN_VOTING", uint256(1 weeks));
+    }
 
     function run()
         external
         returns (ProjectFactory factory, PaymentToken token, CompanyRegistry registry, Redemption redemption)
     {
         // Create (or reuse) the subscription at vrf.chain.link and put the ID here.
-        uint256 subscriptionId = 0; // TODO: fill in from vrf.chain.link
+        uint256 subscriptionId = 35152182209447658705524417127598446980824408461048413491098011822516358913899;
 
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerKey);
@@ -60,9 +78,9 @@ contract Deploy is Script {
         });
 
         factory = new ProjectFactory(
-            GLOBAL_MIN_VOTING,
-            MIN_PROPOSAL_SUBMISSION,
-            MIN_VOTING,
+            globalMinVoting,
+            minProposalSubmission,
+            minVoting,
             address(token),
             address(escrowImpl),
             createProjectWallet,

@@ -74,8 +74,7 @@ contract GovernanceInvariantHandler is TestBase {
                 vm.warp(block.timestamp + 2 days);
             } else {
                 vm.warp(block.timestamp + 8 days); // past votingDeadline
-                vm.prank(admin);
-                governance.closeVoting(5);
+                _closeVoting(5);
             }
             return;
         }
