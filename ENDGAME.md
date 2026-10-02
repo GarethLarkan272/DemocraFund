@@ -17,7 +17,7 @@ The leap to national scale is *not* a rewrite. Every component in the MVP was bu
 | Club members vote | Citizens vote within their department/ward |
 | Club committee administers | Government departments post tenders |
 | Membership fees as the shadow "taxes" | Real tax-funded budgets |
-| GES "shadow rand", manual admin off-ramp | Regulated stablecoin / licensed payment processor |
+| HZAR "shadow rand", manual admin off-ramp | Regulated stablecoin / licensed payment processor |
 | Backend-custodial wallets | Self-custody via ERC-4337 smart wallets |
 | One club, one community | Many municipalities, many departments |
 
@@ -46,7 +46,7 @@ The same structural argument that makes a golf club pilot compelling becomes ove
 
 ### 3.2 Medium-term (real users, real money)
 
-- **ERC-4337 account abstraction + Paymaster.** Smart-contract wallets for every user; gas sponsored or paid in GES; the backend is no longer the sole custodian of every key. This is the step that makes the system *custody-optional*: members can self-custody while the club keeps the frictionless custodial option.
+- **ERC-4337 account abstraction + Paymaster.** Smart-contract wallets for every user; gas sponsored or paid in HZAR; the backend is no longer the sole custodian of every key. This is the step that makes the system *custody-optional*: members can self-custody while the club keeps the frictionless custodial option.
 - **KYC/identity + department-scoped voting.** Citizen eligibility and department membership become on-chain (or zk-attested) claims, so "one citizen, one vote, in the right ward" is enforced, not assumed.
 - **Reject votes for contested milestones.** Any signer can reject a milestone with a written, evidenced justification (IPFS) — bad-faith rejection costs the same public accountability as bad-faith approval.
 - **Member-jury appeals.** A signed-off dispute path for contested promotions, rejections, and cancellations — the missing fourth leg of the dispute resolution story.
@@ -55,7 +55,7 @@ The same structural argument that makes a golf club pilot compelling becomes ove
 ### 3.3 Long-term (national scale)
 
 - **Multi-department, multi-municipality deployment.** One factory, many departments; a platform admin provisions departments with their own voting pools, budgets, and reporting surfaces.
-- **A regulated stablecoin or licensed processor.** Swap the GES shadow-rand for a real 1:1-backed instrument — the MVP's token contract was deliberately built to make this a config change.
+- **A regulated stablecoin or licensed processor.** Swap the HZAR shadow-rand for a real 1:1-backed instrument — the MVP's token contract was deliberately built to make this a config change.
 - **Builder track records as a first-class primitive.** Receipt NFTs accrue per builder: verified public-works history, dispute record, on-time performance — a portable reputation that rewards competence across tenders.
 - **Arbitrum Subnet.** A dedicated L2 with custom gas token, validator control, and compliance hooks for government data-handling requirements.
 

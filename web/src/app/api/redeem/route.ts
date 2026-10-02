@@ -63,7 +63,7 @@ export async function provenanceFor(session: { role: string; username: string })
   return out;
 }
 
-// GET /api/redeem - the caller's GES balance, their redemption receipts, and
+// GET /api/redeem - the caller's HZAR balance, their redemption receipts, and
 // the escrows their earnings came from (provenance choices for redemption).
 export async function GET() {
   const auth = await requireUser();
@@ -108,7 +108,7 @@ export async function GET() {
 }
 
 // POST /api/redeem { amount, destinationId?, escrow? }
-// Any GES holder burns their balance at the off-ramp and receives a receipt
+// Any HZAR holder burns their balance at the off-ramp and receives a receipt
 // NFT. The receipt's provenance escrow is the project that paid the redeemer;
 // when the caller has no project earnings (e.g. never drawn to a committee),
 // their own wallet is recorded as the provenance.
@@ -140,7 +140,7 @@ export async function POST(req: Request) {
       escrowAddr = match.escrow as Address;
     }
 
-    // 1. Approve the Redemption contract to pull the GES.
+    // 1. Approve the Redemption contract to pull the HZAR.
     const approveData = encodeFunctionData({
       abi: paymentToken.abi,
       functionName: "approve",
@@ -148,7 +148,7 @@ export async function POST(req: Request) {
     });
     await submit(wallet, { to: paymentToken.address, data: approveData }, "approve");
 
-    // 2. Redeem: burn GES, mint the receipt NFT.
+    // 2. Redeem: burn HZAR, mint the receipt NFT.
     const redeemData = encodeFunctionData({
       abi: redemption.abi,
       functionName: "redeem",

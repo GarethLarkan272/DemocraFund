@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       args: [infoHash],
     });
 
-    let receipt;
+    let receipt: { hash: string } | undefined;
     try {
       receipt = await submit(admin, { to: companyRegistry.address, data }, "registerCompany");
     } catch {
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ ok: true, txHash: receipt.hash, companyId: onChainId });
+    return NextResponse.json({ ok: true, txHash: receipt?.hash, companyId: onChainId });
   } catch (e) {
     return apiError(e);
   }

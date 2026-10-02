@@ -21,7 +21,7 @@ export const RPC_URL =
 export const MIN_WALLET_BALANCE = BigInt("2000000000000000"); // 0.002 ETH
 export const TOPUP_AMOUNT = BigInt("5000000000000000"); // 0.005 ETH
 
-// GES is an 18-decimal ERC-20. Human amounts are multiplied on the way into
+// HZAR is an 18-decimal ERC-20. Human amounts are multiplied on the way into
 // the contracts and divided on the way out.
 export const GES_DECIMALS = 18;
 export const TOKEN_SYMBOL = "HZAR"; // display symbol - change when the token is renamed

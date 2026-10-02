@@ -2,7 +2,7 @@
 ### Transparent, on-chain tendering, voting, and escrow for public (and community) projects
 
 **Author:** Gareth Larkan
-**Status:** Implemented MVP — Foundry/Solidity contracts with a full test suite (`src/`, 137 tests: unit + fuzz + invariant + end-to-end flows)
+**Status:** Implemented MVP — Foundry/Solidity contracts with a full test suite (`src/`, 151 tests: unit + fuzz + invariant + end-to-end flows)
 **Pilot partner:** Humewood Golf Club
 **Chain:** Arbitrum (testnet deployment: Arbitrum Sepolia)
 
@@ -41,7 +41,7 @@ Every tender carries a `department` tag for categorisation and surfacing in the 
 DemocraFund is **six smart contracts** on Arbitrum that together replace the trust you'd normally place in a single administrator with rules anyone can inspect. The design rule that drives everything: **no single person — not even the admin — can move a single token by themselves.**
 
 ```
-  PaymentToken (GES)      <- the "shadow rand", minted per project
+  PaymentToken (HZAR)      <- the "shadow rand", minted per project
        |
   ProjectFactory          <- one stop for creating tenders + the mint authority
        |
@@ -52,10 +52,10 @@ DemocraFund is **six smart contracts** on Arbitrum that together replace the tru
        |
   CompanyRegistry         <- who is allowed to bid
        |
-  Redemption              <- the off-ramp: burn GES, get fiat + receipt NFT
+  Redemption              <- the off-ramp: burn HZAR, get fiat + receipt NFT
 ```
 
-**The two tracks.** DemocraFund deliberately never custodies member money. Members' real dues stay in the club's real bank account — on-chain, members only carry *identity* (whose vote, whose signature). The only money that ever touches the chain is (a) the exact budget of an awarded project and (b) the builder's payment for it, in a token that looks and behaves like a stablecoin ("GES") and is later redeemed back into real money.
+**The two tracks.** DemocraFund deliberately never custodies member money. Members' real dues stay in the club's real bank account — on-chain, members only carry *identity* (whose vote, whose signature). The only money that ever touches the chain is (a) the exact budget of an awarded project and (b) the builder's payment for it, in a token that looks and behaves like a stablecoin ("HZAR") and is later redeemed back into real money.
 
 **The trustless core.** When a tender is awarded, the money is minted into a **milestone-gated multisig escrow** — a vault that pays out in stages, and only when the right people cryptographically sign that a stage is done: the admin, the builder, **and** at least one community member drawn at random (Chainlink VRF). Nobody — not the admin, not the builder, not the members alone — can unlock a stage. Cancelling a project is deliberately *harder* than paying a stage.
 
@@ -70,7 +70,7 @@ DemocraFund is **six smart contracts** on Arbitrum that together replace the tru
 3. **Citizen voting** — Members view all proposals and vote for one. One member, one vote, recorded on-chain. Voting window has a defined, time-enforced close time — the admin cannot close it early. A tender with **zero bids cannot open voting**: the lifecycle stops in bidding, since voting on nothing is meaningless. *(Planned: allow the admin to nominate a company in the no-bids case, so a stranded tender can still be resolved — design not yet built.)*
 4. **Shortlist** — The top `n` proposals by vote count (admin sets `n` at close of voting; boundary ties all pass) are surfaced to Admin.
 5. **Government award** — Admin selects the winner **from the shortlist** (not necessarily #1; the contracts verify the awarded proposal was in the top-`n` by votes). This preserves legitimate government discretion while making an off-list, unvoted choice impossible. The award is only possible until `awardDeadline`; after it, anyone can expire the tender (nothing was funded yet).
-6. **Escrow creation & funding** — On award, an escrow contract is deployed for this specific project, funded with the agreed budget **plus the committee fee reserve** in GES. The awarded proposal's payment wallet becomes the builder signer.
+6. **Escrow creation & funding** — On award, an escrow contract is deployed for this specific project, funded with the agreed budget **plus the committee fee reserve** in HZAR. The awarded proposal's admin wallet becomes the builder signer and payout address.
 7. **Committee formation** — 1 admin representative + members drawn from the project's opted-in pool:
    - **Pool of 0:** no community committee — 2-of-2 fallback (admin + builder).
    - **Pool of 1–3:** everyone serves directly — no randomness needed.
@@ -78,10 +78,10 @@ DemocraFund is **six smart contracts** on Arbitrum that together replace the tru
 8. **Milestone execution loop** (repeats per stage):
    - Builder marks a stage complete + uploads evidence (photos, invoices) to IPFS; the evidence hash is locked on-chain **before** any approval can exist.
    - Each signer independently inspects/confirms and signs (EIP-712 typed messages, submitted in batches by anyone — a relayer).
-   - At the derived threshold — **admin AND builder plus ≥1 member, ≥3 signatures total when M≥1** — the escrow auto-releases that stage's payment to the builder's payment wallet. Members can never band together to approve.
+   - At the derived threshold — **admin AND builder plus ≥1 member, ≥3 signatures total when M≥1** — the escrow auto-releases that stage's payment to the builder's admin wallet. Members can never band together to approve.
    - A committee fee credit accrues to every member who signed the released milestone; members pull it themselves via `collectFees()` (no deadline).
 9. **Project completion** — Final stage released, the project is marked complete, and the un-owed fee reserve is swept back to the treasury. The full history (tender → proposals → votes → award → every milestone signature → every fund movement) remains permanently viewable.
-10. **Off-ramp** — The builder redeems their GES: the tokens are burned, a transferable receipt NFT is minted as proof, and the paying authority releases the real money to the builder's KYC'd bank account and marks the receipt `paid` on-chain.
+10. **Off-ramp** — The builder redeems their HZAR: the tokens are burned, a transferable receipt NFT is minted as proof, and the paying authority releases the real money to the builder's KYC'd bank account and marks the receipt `paid` on-chain.
 
 ---
 
@@ -114,13 +114,13 @@ Only a registered project's own governance can trigger the mint, and only up to 
 signatures (admin + builder + ≥1 member) --> escrow verifies thresholds
         |
         v
-escrow transfers milestone.amount --> builder's payment wallet
+escrow transfers milestone.amount --> builder's admin wallet
         |
         v
 fee credit accrues to each signing member --> members pull via collectFees()
 ```
 
-The transfer happens **inside the same transaction** as the signature submission — there is no second step where funds could be stalled. The builder's wallet was fixed at award (the company's registered payment wallet); nobody can redirect it.
+The transfer happens **inside the same transaction** as the signature submission — there is no second step where funds could be stalled. The builder's wallet was fixed at award (the company's registered admin wallet); nobody can redirect it.
 
 ### 5.4 Flow 3 — Committee fees
 
@@ -153,10 +153,10 @@ The admin can pay the builder a partial compensation (`releaseSettlement`) — e
 ### 5.8 Flow 7 — Off-ramp (burn -> receipt -> fiat)
 
 ```
-builder approves GES --> Redemption.redeem()
+builder approves HZAR --> Redemption.redeem()
         |
         v
-GES burned (supply down, peg preserved) + receipt NFT minted (Pending)
+HZAR burned (supply down, peg preserved) + receipt NFT minted (Pending)
         |
         v
 paying authority honours the fiat payout --> markPaid(tokenId, payoutRef)
@@ -174,12 +174,12 @@ The receipt is the terminal artifact of the token's lifecycle — mint -> escrow
 
 | Contract | Purpose | Deployment model | Key state |
 |---|---|---|---|
-| **PaymentToken** (`src/PaymentToken.sol`) | ERC-20 "Generic Example Stable" (GES), behaves like a stablecoin | One, deployed first | `FACTORY` role (mint + burn) |
+| **PaymentToken** (`src/PaymentToken.sol`) | ERC-20 "Humewood ZAR" (HZAR), behaves like a stablecoin | One, deployed first | `FACTORY` role (mint + burn) |
 | **CompanyRegistry** (`src/CompanyRegistry.sol`) | Permissionless company self-registration | One, deployed before the factory, injected into every governance | `companies[]`, `companyIdOfAdmin`, `companyCount` |
 | **ProjectFactory** (`src/ProjectFactory.sol`) | Creates tenders; the sole mint authority; global policy + shared VRF config | One | `isProject[]`, `CREATE_PROJECT_ROLE`, duration minimums, `vrfConfig` |
 | **ProjectGovernance** (`src/ProjectGovernance.sol`) | Per-tender lifecycle state machine + voting + committee draw | `new` per project (not a clone — inherits `VRFConsumerBaseV2Plus`, coordinator injected in the constructor) | lifecycle enum, deadlines, proposals, votes, opt-in pool, escrow pointer |
 | **ProjectEscrow** (`src/ProjectEscrow.sol`) | Milestone-gated multisig vault; source of truth for ALL fund movement | Minimal-proxy **clone**, initialized by governance at award | milestone schedule, signature bitmaps, per-purpose nonces, fee credits, accounting counters |
-| **Redemption** (`src/Redemption.sol`) | Off-ramp: burn GES -> receipt NFT -> paying authority attestation | One | `receipts[]`, `PAYER_ROLE`, `receiptCount` |
+| **Redemption** (`src/Redemption.sol`) | Off-ramp: burn HZAR -> receipt NFT -> paying authority attestation | One | `receipts[]`, `PAYER_ROLE`, `receiptCount` |
 
 ### 6.2 Design decisions that matter
 
@@ -196,7 +196,7 @@ The receipt is the terminal artifact of the token's lifecycle — mint -> escrow
   | 0 | 2 | 2-of-2 (admin + builder) | 2-of-2 |
 
 - **Committee addresses are NEVER admin-supplied** — only from the opt-in pool (VRF draw, or all opt-ins when pool ≤ 3). A stalled member can be replaced by an alternate via signature-gated `promoteAlternate`, which mirrors the release rule and clears the replaced slot's signature bits.
-- **Time is enforced, not advisory.** `proposalDeadline`, `votingDeadline`, `awardDeadline` are checked on-chain. The `urgent` bypass flag was deliberately removed. A pending VRF draw cannot lock funds: after `SELECTION_RETRY_DELAY` (7 days) anyone can `retryCommitteeSelection` or abort via `cancelProject`.
+- **Time is enforced, not advisory.** `proposalDeadline`, `votingDeadline`, `awardDeadline` are checked on-chain. The `urgent` bypass flag was deliberately removed. A pending VRF draw cannot lock funds: the admin can retry the draw at any time, and after `SELECTION_RETRY_DELAY` (7 days) anyone can abort via `cancelProject`.
 - **No external calls in the release path.** Fees accrue as pure storage; a member's wallet can never brick a release.
 - **Money can never be stuck.** Every terminal state has a defined money outcome: cancellation refunds the treasury (`balance - uncollected fees`), completion sweeps the un-owed surplus, uncollected fees remain collectable forever, and off-ramping is permissionless.
 
@@ -309,31 +309,31 @@ Off-ramp:       Redemption.redeem(amount, destinationId, escrow)
 
 ### 8.1 Simple example — small club project, no committee (M = 0)
 
-Humewood's committee posts "Replace the clubhouse boiler" with `budgetCap = 1,000 GES`. Nobody opts in for the committee (M = 0), so the escrow runs the **2-of-2 fallback**.
+Humewood's committee posts "Replace the clubhouse boiler" with `budgetCap = 1,000 HZAR`. Nobody opts in for the committee (M = 0), so the escrow runs the **2-of-2 fallback**.
 
-1. **Bid.** "Boilers R Us" registers a company (adminWallet + paymentWallet), bids `1,000 GES` with 2 milestones: `[400, 600]`.
+1. **Bid.** "Boilers R Us" registers a company, bids `1,000 HZAR` with 2 milestones: `[400, 600]`.
 2. **Vote.** 30 members vote; the proposal wins the shortlist.
-3. **Award.** The admin awards it. The factory mints `1,000 + 2×3×10 = 1,060 GES` into the new escrow (the extra 60 is the fee reserve — never owed here, returned at completion). Committee is finalised empty -> 2-of-2.
-4. **Milestone 1.** The builder submits photos of the new boiler (`evidenceHash` locked). The relayer submits the admin's signature. Threshold: admin + builder = 2-of-2 -> **400 GES transfers to the builder's payment wallet**.
-5. **Milestone 2.** Same flow -> **600 GES released**.
-6. **Completion.** All milestones released. `completeProject()` sweeps the un-owed 60 GES back to the treasury.
-7. **Off-ramp.** The builder redeems 1,000 GES: burned, receipt NFT minted, paying authority releases R1,000 to their bank account and marks the receipt `paid`.
+3. **Award.** The admin awards it. The factory mints `1,000 + 2×3×10 = 1,060 HZAR` into the new escrow (the extra 60 is the fee reserve — never owed here, returned at completion). Committee is finalised empty -> 2-of-2.
+4. **Milestone 1.** The builder submits photos of the new boiler (`evidenceHash` locked). The relayer submits the admin's signature. Threshold: admin + builder = 2-of-2 -> **400 HZAR transfers to the builder's admin wallet**.
+5. **Milestone 2.** Same flow -> **600 HZAR released**.
+6. **Completion.** All milestones released. `completeProject()` sweeps the un-owed 60 HZAR back to the treasury.
+7. **Off-ramp.** The builder redeems 1,000 HZAR: burned, receipt NFT minted, paying authority releases R1,000 to their bank account and marks the receipt `paid`.
 
 **Money at the end:** builder got 1,000; treasury got back 60; the escrow is empty; total supply minted = 1,060, burned = 1,000.
 
 ### 8.2 Complex example — VRF committee, stall, promotion, fees, cancellation
 
-Humewood posts "Entrance upgrade" (`budgetCap = 5,000 GES`, `committeeFeePerSignature = 10`). Six members opt in.
+Humewood posts "Entrance upgrade" (`budgetCap = 5,000 HZAR`, `committeeFeePerSignature = 10`). Six members opt in.
 
-1. **Award with a draw.** Two companies bid; proposal A (`3,000 GES`, milestones `[900, 900, 1,200]`) wins the vote. On award the escrow is minted `3,000 + 3×3×10 = 3,090 GES` and a VRF request fires (`numWords = min(pool, 5) = 5`).
+1. **Award with a draw.** Two companies bid; proposal A (`3,000 HZAR`, milestones `[900, 900, 1,200]`) wins the vote. On award the escrow is minted `3,000 + 3×3×10 = 3,090 HZAR` and a VRF request fires (`numWords = min(pool, 5) = 5`).
 2. **Fulfilment.** The coordinator delivers randomness; the draw picks members 100, 101, 102 and alternates 103, 104. The escrow finalises. **No approvals were possible while the draw was pending.**
-3. **Milestone 1.** Builder submits evidence. Admin, member 100 and member 101 sign -> 3-of-5 with admin + builder + ≥1 member -> **900 GES released**. Members 100 and 101 each accrue a 10 GES fee credit.
+3. **Milestone 1.** Builder submits evidence. Admin, member 100 and member 101 sign -> 3-of-5 with admin + builder + ≥1 member -> **900 HZAR released**. Members 100 and 101 each accrue a 10 HZAR fee credit.
 4. **Stall.** Member 102 doesn't respond for weeks. The relayer gathers promotion signatures (admin + builder + member 100) -> `promoteAlternate(0, 2, sigs)` swaps alternate 103 into member slot 2, clearing member 102's signature bits. No re-draw needed; M stays 3.
-5. **Milestone 2.** Builder submits; admin + member 101 + the new member 103 sign -> **900 GES released**. Fees accrue to 101 and 103. Member 100 pulls their 10 GES via `collectFees()`.
+5. **Milestone 2.** Builder submits; admin + member 101 + the new member 103 sign -> **900 HZAR released**. Fees accrue to 101 and 103. Member 100 pulls their 10 HZAR via `collectFees()`.
 6. **Dispute.** The committee discovers substandard materials. Four signatures (4-of-5: admin + builder + two members) commit to one `reasonHash` ("substandard materials, photos in evidence"). The escrow cancels and refunds the treasury `balance - totalUncollectedFees` — members' uncollected fee credits stay payable.
 7. **Finalisation.** Anyone calls `governance.cancelProject()` -> lifecycle CANCELLED. The audit trail shows every vote, every signature, every release, and the cancellation reason.
 
-**Money at the end:** builder received 1,800 (milestones 1+2); the remaining 1,200 milestone was never paid; members collected (or can still collect) their 10 GES each; the treasury got back everything else. No token was ever released without the required signatures.
+**Money at the end:** builder received 1,800 (milestones 1+2); the remaining 1,200 milestone was never paid; members collected (or can still collect) their 10 HZAR each; the treasury got back everything else. No token was ever released without the required signatures.
 
 ---
 
@@ -349,7 +349,7 @@ Roles come from OpenZeppelin `AccessControl`; everything else is enforced by mod
 | **Paying authority** | `PAYER_ROLE` on `Redemption` | Marks redemption receipts paid or rejected after honouring the fiat payout. |
 | **Project creator** | `CREATE_PROJECT_ROLE` on `ProjectFactory` | Creates tenders (one governance contract per project). |
 | **Project admin** | `DEFAULT_ADMIN_ROLE` on each `ProjectGovernance` (the project's `governanceSafeWallet` — intended to be a Safe multisig) | Drives the lifecycle: opens windows, closes voting, awards, settles, cancels pre-award. |
-| **Companies** | Registered in `CompanyRegistry`; the `adminWallet` acts for the company | Bid on tenders (one proposal per company per tender); update their own payment wallet/infoHash/active flag. |
+| **Companies** | Registered in `CompanyRegistry`; the `adminWallet` acts for the company | Bid on tenders (one proposal per company per tender); update their own infoHash/active flag. |
 | **Citizens** | Any EOA | Opt into the committee pool; vote once per tender; relayer signatures. |
 | **Committee signers** | Admin (slot 0), members (slots 1..M), builder (slot M+1) | Approve milestone releases and cancellations via EIP-712 signatures. |
 | **Relayer** | Anyone | Submits signature batches to the escrow (no permissions — the signatures are the credentials). |
@@ -396,7 +396,6 @@ The token has **no pause, no blacklist**. The factory only mints the awarded cos
 | `createProposal(companyId, ...)` | **not role-based** — caller must be the company's registered `adminWallet`, the company must be `active`, one proposal per company per tender, plus lifecycle/deadline/cost checks |
 | `completeProject` | lifecycle AWARDED + all milestones released (proof is on-chain) |
 | `expireDeliberation` | lifecycle DELIBERATION + `now > awardDeadline` — anyone can cancel a tender the admin never awarded |
-| `retryCommitteeSelection` | any caller once `now >= selectionRequestedAt + SELECTION_RETRY_DELAY` (7 days) |
 | `cancelProject` | any caller once the escrow's signature-based cancellation has fired (committee finalised), or once `SELECTION_RETRY_DELAY` has passed with the draw pending |
 
 **Coordinator-only:**
@@ -413,7 +412,7 @@ The escrow has **no roles**. Access is either `onlyGovernanceContract` (modifier
 |---|---|---|
 | `initialize(...)` | the clone's creator (governance at award time) | Any address may initialize a fresh clone they deploy themselves; the implementation contract has initializers disabled. `msg.sender` becomes `projectGovernanceContract`. |
 | `setCommitteeMembers(members, alts)` | `onlyGovernanceContract` | Once only; flips `committeeFinalized`. Called by governance (directly or from the VRF callback). |
-| `submitMilestoneComplete(evidence)` | the builder signer (`builderSigner` = winning company's payment wallet) | Counts as the builder's signature; locks evidence. |
+| `submitMilestoneComplete(evidence)` | the builder signer (`builderSigner` = winning company's admin wallet) | Counts as the builder's signature; locks evidence. |
 | `approveMilestone(sigs)` | anyone (relayer) | Each signature verified against the signer's bitmap slot; the **builder cannot** sign here (`BuilderMustSubmitDirectly`). Release fires automatically at admin AND builder AND ≥1 member (≥3 total when M≥1; 2-of-2 when M=0). |
 | `approveCancellation(reason, sigs)` | anyone (relayer) | Signatures from any of the M+2 signers; threshold M+1-of-(M+2) (2-of-2 fallback). All commit to the same locked `reasonHash`. |
 | `promoteAlternate(alt, member, sigs)` | anyone (relayer) | Rule mirrors release: admin AND builder AND ≥1 member when M≥2 (admin+builder when M=1). The promoted alternate takes the slot; its bits are cleared. |
@@ -428,7 +427,7 @@ The escrow has **no roles**. Access is either `onlyGovernanceContract` (modifier
 
 - Slot 0 — admin: the project's `governanceSafeWallet` (set at initialize).
 - Slots 1..M — committee members: drawn from the opt-in pool only (VRF, or all opt-ins when pool ≤ 3); never admin-supplied. Replaced only via `promoteAlternate` (from the alternates list).
-- Slot M+1 — builder: the winning company's `paymentWallet`.
+- Slot M+1 — builder: the winning company's `adminWallet`.
 - Alternates: not signers until promoted.
 - Committee fee **credits** accrue only to members who signed a *released* milestone — never to admin, builder, or alternates.
 
@@ -438,8 +437,8 @@ No roles; authority comes from registration state.
 
 | Function | Caller |
 |---|---|
-| `registerCompany(paymentWallet, infoHash)` | any address; becomes the company's `adminWallet`. One company per wallet (`AlreadyRegistered`). |
-| `updateCompany(paymentWallet, infoHash)` | the company's `adminWallet` (`companyIdOfAdmin[msg.sender]`). |
+| `registerCompany(infoHash)` | any address; becomes the company's `adminWallet`. One company per wallet (`AlreadyRegistered`). |
+| `updateCompany(infoHash)` | the company's `adminWallet` (`companyIdOfAdmin[msg.sender]`). |
 | `setCompanyActive(bool)` | the company's `adminWallet`. |
 
 ### 9.7 Trust model & centralisation points
@@ -467,7 +466,7 @@ Some of this is already implemented in the MVP contracts; the rest is specified 
 
 ## 11. Testing & Test Coverage
 
-The contracts ship with **137 tests across 7 suites** — unit, fuzz, invariant, and end-to-end flows — plus property-based invariant fuzzing that runs continuously in CI.
+The contracts ship with **151 tests across 7 suites** — unit, fuzz, invariant, and end-to-end flows — plus property-based invariant fuzzing that runs continuously in CI.
 
 ### 11.1 Test suites
 

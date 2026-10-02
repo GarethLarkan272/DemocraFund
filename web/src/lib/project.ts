@@ -7,7 +7,7 @@ export function bytes32ToString(b: Hex): string {
   return Buffer.from(decoded.slice(2), "hex").toString("utf8").replace(/\0+$/, "");
 }
 
-// GES is an 18-decimal ERC-20. Every API response exposes human-readable GES
+// HZAR is an 18-decimal ERC-20. Every API response exposes human-readable HZAR
 // amounts (wei / 1e18) so the UI never divides. Rounds to 6 decimals so
 // wei-dust from legacy conversions never shows as 4999.999999999999958.
 export function weiToGES(v: bigint | string | number): string {

@@ -775,16 +775,6 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
         emit VoteCast(msg.sender, _proposalId);
     }
 
-    // --------------------------------------------------------------------------
-    // ---------------------------------------> MILESTONE CHANGES <--------------
-    // --------------------------------------------------------------------------
-
-    // Milestone approvals and fund releases happen inside the ProjectEscrow:
-    // the builder first declares the milestone complete with evidence
-    // (submitMilestoneComplete), then admin/member signatures are submitted in
-    // EIP-712 batches, and the escrow auto-releases once the derived 3-of-5
-    // (or 2-of-2 fallback) rule is met. Governance only tracks the lifecycle.
-
     /// @dev Guards every function that addresses a stored proposal by id.
     modifier proposalExists(uint256 _proposalId) {
         if (_proposalId >= numberOfProposals) revert ProposalNonExistent();

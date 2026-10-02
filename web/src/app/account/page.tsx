@@ -97,7 +97,7 @@ type OverviewData = {
   pendingActions: { governance: string; title: string; action: string; label: string }[];
 };
 
-const GES = (n: number | string) =>
+const fmtR = (n: number | string) =>
   `R${(Number(n)).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
 const LIFECYCLE_BADGE: Record<string, string> = {
@@ -364,11 +364,11 @@ export default function Account() {
               </div>
               <div className="border border-zinc-200 rounded-xl p-4">
                 <div className="text-xs text-zinc-500 uppercase tracking-wider">Funded</div>
-                <div className="text-xl font-bold text-emerald-600 mt-1">{GES(overview.money.funded)}</div>
+                <div className="text-xl font-bold text-emerald-600 mt-1">{fmtR(overview.money.funded)}</div>
               </div>
               <div className="border border-zinc-200 rounded-xl p-4">
                 <div className="text-xs text-zinc-500 uppercase tracking-wider">Fees owed</div>
-                <div className="text-xl font-bold text-amber-600 mt-1">{GES(overview.money.owed)}</div>
+                <div className="text-xl font-bold text-amber-600 mt-1">{fmtR(overview.money.owed)}</div>
               </div>
               <div className="border border-zinc-200 rounded-xl p-4">
                 <div className="text-xs text-zinc-500 uppercase tracking-wider">Companies</div>
@@ -498,19 +498,19 @@ export default function Account() {
             <div className="grid grid-cols-4 gap-3">
               <div className="border border-zinc-200 rounded-xl p-4">
                 <div className="text-xs text-zinc-500 uppercase tracking-wider">Funded</div>
-                <div className="text-xl font-bold text-emerald-600 mt-1">{GES(money.totals.funded)}</div>
+                <div className="text-xl font-bold text-emerald-600 mt-1">{fmtR(money.totals.funded)}</div>
               </div>
               <div className="border border-zinc-200 rounded-xl p-4">
                 <div className="text-xs text-zinc-500 uppercase tracking-wider">Released</div>
-                <div className="text-xl font-bold mt-1">{GES(money.totals.released)}</div>
+                <div className="text-xl font-bold mt-1">{fmtR(money.totals.released)}</div>
               </div>
               <div className="border border-zinc-200 rounded-xl p-4">
                 <div className="text-xs text-zinc-500 uppercase tracking-wider">Fees owed</div>
-                <div className="text-xl font-bold text-amber-600 mt-1">{GES(money.totals.feesOwed)}</div>
+                <div className="text-xl font-bold text-amber-600 mt-1">{fmtR(money.totals.feesOwed)}</div>
               </div>
               <div className="border border-zinc-200 rounded-xl p-4">
                 <div className="text-xs text-zinc-500 uppercase tracking-wider">In escrow now</div>
-                <div className="text-xl font-bold mt-1">{GES(money.totals.balance)}</div>
+                <div className="text-xl font-bold mt-1">{fmtR(money.totals.balance)}</div>
               </div>
             </div>
 
@@ -534,27 +534,27 @@ export default function Account() {
                     <div className="grid grid-cols-3 gap-3 mt-3 text-sm">
                       <div>
                         <div className="text-xs text-zinc-500">Budget</div>
-                        <div>{GES(t.totalProjectBudget)}</div>
+                        <div>{fmtR(t.totalProjectBudget)}</div>
                       </div>
                       <div>
                         <div className="text-xs text-zinc-500">Released</div>
-                        <div className="text-emerald-600">{GES(t.totalReleased)}</div>
+                        <div className="text-emerald-600">{fmtR(t.totalReleased)}</div>
                       </div>
                       <div>
                         <div className="text-xs text-zinc-500">Fee reserve</div>
-                        <div>{GES(t.feeReserve)}</div>
+                        <div>{fmtR(t.feeReserve)}</div>
                       </div>
                       <div>
                         <div className="text-xs text-zinc-500">Fees collected</div>
-                        <div>{GES(t.feesCollected)}</div>
+                        <div>{fmtR(t.feesCollected)}</div>
                       </div>
                       <div>
                         <div className="text-xs text-zinc-500">Fees owed</div>
-                        <div className="text-amber-600">{GES(t.totalUncollectedFees)}</div>
+                        <div className="text-amber-600">{fmtR(t.totalUncollectedFees)}</div>
                       </div>
                       <div>
                         <div className="text-xs text-zinc-500">Swept to treasury</div>
-                        <div>{GES(t.totalSweptToTreasury)}</div>
+                        <div>{fmtR(t.totalSweptToTreasury)}</div>
                       </div>
                     </div>
                   </div>
@@ -584,7 +584,7 @@ export default function Account() {
                         </span>
                         <code className="text-emerald-700 text-sm">{shortAddr(m.wallet)}</code>
                       </div>
-                      <span className="text-sm text-zinc-700">{GES(m.credits)} earned</span>
+                      <span className="text-sm text-zinc-700">{fmtR(m.credits)} earned</span>
                     </div>
                   ))}
                 </div>
@@ -611,7 +611,7 @@ export default function Account() {
         <div className="border-t border-zinc-200 pt-5">
           <div className="flex items-center justify-between">
             <div className="text-xs text-zinc-500 uppercase tracking-wider">Available balance</div>
-            <span className="text-2xl font-bold text-emerald-600">{GES(balance ?? 0)}</span>
+            <span className="text-2xl font-bold text-emerald-600">{fmtR(balance ?? 0)}</span>
           </div>
 
           <form onSubmit={redeem} className="grid gap-3 mt-4">
@@ -665,7 +665,7 @@ export default function Account() {
                     <div>
                       <div className="font-medium text-sm">Receipt #{r.tokenId}</div>
                       <div className="text-xs text-zinc-500">
-                        {GES(r.amount)} burned
+                        {fmtR(r.amount)} burned
                         {r.state === "Paid" && ` · ref ${r.payoutRef}`}
                       </div>
                     </div>
@@ -683,7 +683,7 @@ export default function Account() {
               <div className="flex items-center justify-between">
                 <div className="text-xs text-zinc-500 uppercase tracking-wider">Committee fees owed</div>
                 <div className="text-sm font-semibold text-amber-600">
-                  {GES(fees.totalOwed)}
+                  {fmtR(fees.totalOwed)}
                 </div>
               </div>
               <div className="grid gap-2">
@@ -700,7 +700,7 @@ export default function Account() {
                         {t.title}
                       </Link>
                       <div className="text-xs text-zinc-500">
-                        {GES(t.owed)} uncollected
+                        {fmtR(t.owed)} uncollected
                       </div>
                     </div>
                     <button
@@ -841,7 +841,7 @@ export default function Account() {
                       )}
                     </div>
                     <div className="text-xs text-zinc-500 mt-0.5">
-                      Bid #{b.proposalId} · {GES(b.cost)} ·{" "}
+                      Bid #{b.proposalId} · {fmtR(b.cost)} ·{" "}
                       {b.milestones.length} milestone{b.milestones.length === 1 ? "" : "s"}
                       {b.depositRequired ? " · deposit" : ""}
                     </div>
