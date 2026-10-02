@@ -712,7 +712,7 @@ contract ProjectEscrowTest is TestBase {
         escrow.abort();
     }
 
-    /// H3: a stray token donation to the escrow must not brick milestone
+    /// A stray token donation to the escrow must not brick milestone
     /// releases - the accounting check is a solvency inequality, not an exact
     /// identity. The surplus simply remains sweepable at the end.
     function testDonationDoesNotBrickReleases() public {
@@ -732,7 +732,7 @@ contract ProjectEscrowTest is TestBase {
         assertEq(token.balanceOf(address(escrow)), funded + 1 - AMOUNTS[0]);
     }
 
-    /// H3: the donated dust flows to the treasury on cancellation alongside
+    /// The donated dust flows to the treasury on cancellation alongside
     /// the rest of the surplus.
     function testDonationRefundedOnCancellation() public {
         _newEscrow();
@@ -746,7 +746,7 @@ contract ProjectEscrowTest is TestBase {
         assertEq(token.balanceOf(treasury), COST + escrow.feeReserve() + 1);
     }
 
-    /// H3 maths: the solvency check is exactly the old identity rewritten as
+    /// The solvency check is exactly the old identity rewritten as
     /// an inequality - with no donation, balance still equals
     /// budget + feeReserve - paid-out, so the accounting invariant holds.
     function testAccountingIdentityStillExactWithoutDonations() public {
@@ -764,7 +764,7 @@ contract ProjectEscrowTest is TestBase {
         );
     }
 
-    /// M4: the escrow itself enforces the committee fee cap (last line of
+    /// The escrow itself enforces the committee fee cap (last line of
     /// defense behind the factory and governance).
     function testInitializeRejectsExcessiveFee() public {
         ProjectEscrow impl = new ProjectEscrow();
@@ -1388,7 +1388,7 @@ contract ProjectEscrowTest is TestBase {
         redemption.markPaid(tokenId, "TRX-123");
     }
 
-    /// M2: the payer cannot mark a non-existent receipt as paid or rejected -
+    /// The payer cannot mark a non-existent receipt as paid or rejected -
     /// the receipt must actually exist (minted via redeem).
     function testMarkPaidRejectsGhostReceipt() public {
         vm.expectRevert(); // _requireOwned -> ERC721NonexistentToken

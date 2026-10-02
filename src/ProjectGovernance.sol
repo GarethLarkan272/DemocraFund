@@ -125,7 +125,8 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
     mapping(address => bool) public optedIn;
     mapping(uint256 id => address member) public optedInById;
 
-    // Mapping to store addresses that are admin of funds in proposals, to ensure they cannot opt in to committee as well.
+    // Mapping of addresses involved in proposals, so they cannot opt into the
+    // committee as well (a bidder cannot also be a committee member).
     mapping(address user => bool) public involvedInProposal;
 
     // One proposal per company per tender.
@@ -151,6 +152,7 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
     error VotingClosed();
     error ProposalsDurationTooShort();
     error ZeroAmount();
+    error FeeTooHigh();
     error BudgetTooHigh();
     error AddressZero();
     error MilestonesDontMatchCost();
@@ -175,7 +177,6 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
     error AwardDeadlinePassed();
     error AlreadySubmittedProposal();
     error CompanyNotActive();
-    error ProposalsNotClosed();
     error DeadlineExtensionOnlyWhenEmpty();
     error AlreadyApartOfCommittee();
     error AlreadyInProposal();
@@ -212,7 +213,7 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
         if (_config.treasuryWallet == address(0)) revert AddressZero();
         if (_paymentToken == address(0)) revert AddressZero();
         if (_companyRegistry == address(0)) revert AddressZero();
-        if (_config.committeeFeePerSignature > MAX_COMMITTEE_FEE_PER_SIGNATURE) revert ZeroAmount();
+        if (_config.committeeFeePerSignature > MAX_COMMITTEE_FEE_PER_SIGNATURE) revert FeeTooHigh();
         if (_vrf.subscriptionId == 0) revert ZeroAmount();
         if (_vrf.keyHash == bytes32(0)) revert InvalidHash();
         if (_vrf.callbackGasLimit == 0) revert ZeroAmount();
@@ -682,8 +683,8 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
 
     /// @notice Submits a proposal (bid) for the tender on behalf of a company.
     /// @param _companyId The bidding company (see CompanyRegistry); its admin
-    ///        wallet must be the caller and its payment wallet becomes the
-    ///        proposal's fund wallet.
+    ///        wallet must be the caller and becomes the proposal's admin
+    ///        (and, if awarded, the escrow's builder signer + payout wallet).
     /// @param _specContentHash The proposal's specification content.
     /// @param _ipfsHash The proposal's supporting documents.
     /// @param _cost Total bid price; must equal the sum of all milestone
@@ -694,8 +695,8 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
     ///        non-zero amount.
     /// @dev Open during PROPOSAL only, until the proposal deadline. Only a
     ///      registered and active company's admin wallet may bid, and only
-    ///      once per tender; the company's stored payment wallet is used as
-    ///      the fund wallet, so bids never carry wallets. Milestones may not
+    ///      once per tender; the proposal's admin wallet is used directly as
+    ///      the payout wallet, so bids never carry wallets. Milestones may not
     ///      pre-declare themselves as released.
     function createProposal(
         uint256 _companyId,

@@ -20,7 +20,7 @@ import {ProjectEscrow} from "./ProjectEscrow.sol";
 ///      later by each governance contract at award time.
 contract ProjectFactory is AccessControl {
     bytes32 public constant CREATE_PROJECT_ROLE = keccak256("CREATE_PROJECT_ROLE");
-    uint256 public constant MAX_COMMITTEE_FEE_PER_SIGNATURE = 1000 * 1e18; // Hard cap on per-signature committee fees (GES).
+    uint256 public constant MAX_COMMITTEE_FEE_PER_SIGNATURE = 1000 * 1e18; // Hard cap on per-signature committee fees (HZAR).
 
     // --------------------------------------------------------------------------
     // ----------------------------------------> STORAGE <-----------------------

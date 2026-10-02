@@ -90,7 +90,7 @@ contract ProjectEscrow is Initializable, ReentrancyGuard, EIP712 {
     bool public committeeFinalized;
 
     // Wallets - 20 bytes each, one per slot.
-    address public projectWallet; // Builder's fund wallet; receives every release.
+    address public projectWallet; // Builder's payout wallet; receives every release.
     address public treasuryWallet; // Receives the remaining balance on cancellation/abort.
     address public projectGovernanceContract; // The controlling governance clone; set at initialize.
     address public adminSigner; // Signer slot 0 - the government representative.
@@ -197,7 +197,7 @@ contract ProjectEscrow is Initializable, ReentrancyGuard, EIP712 {
 
     /// @notice One-time setup, called by the governance contract immediately
     ///         after the clone is deployed at award time.
-    /// @param _projectWallet The winning proposal's fund wallet - the builder's
+    /// @param _projectWallet The winning proposal's admin wallet - the builder's
     ///        payment address and, at the same time, the builder signer.
     /// @param _treasuryWallet Where remaining funds go on cancellation or abort.
     /// @param _token The payment token held in escrow.

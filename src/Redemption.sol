@@ -9,7 +9,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 /// @title Redemption
 /// @notice The off-ramp: converts Payment Token back into real-world money.
 ///
-///         Flow: a holder burns GES and receives a transferable ERC-721
+///         Flow: a holder burns HZAR and receives a transferable ERC-721
 ///         receipt NFT as on-chain proof of the burn (amount, originating
 ///         escrow/project, KYC'd destination reference). The paying authority
 ///         verifies the receipt on-chain, pays the real-world destination in
@@ -37,7 +37,7 @@ contract Redemption is ERC721, AccessControl {
     struct Receipt {
         address redeemer; // Who burned the tokens.
         address escrow; // The escrow/project that paid the redeemer (recorded, not enforced - tokens are fungible).
-        uint256 amount; // GES burned, raw units (18 decimals).
+        uint256 amount; // HZAR burned, raw units (18 decimals).
         bytes32 destinationId; // Hash of the KYC'd payout destination; full details stay off-chain.
         ReceiptState state;
         string payoutRef; // Paying authority's payment reference, set on markPaid.
@@ -86,14 +86,14 @@ contract Redemption is ERC721, AccessControl {
     // --------------------------------------------------------------------------
 
     /// @notice Burns the caller's tokens and mints a receipt NFT.
-    /// @param _amount GES to redeem (raw units), pulled from the caller via
+    /// @param _amount HZAR to redeem (raw units), pulled from the caller via
     ///        ERC-20 allowance to this contract.
     /// @param _destinationId Hash of the KYC'd payout destination (bank
     ///        account reference). Full details live off-chain.
     /// @param _escrow The escrow/project the tokens were earned from - burned
     ///        into the receipt as provenance.
     /// @return tokenId The receipt NFT id.
-    /// @dev Permissionless: anyone holding GES can off-ramp. The payment
+    /// @dev Permissionless: anyone holding HZAR can off-ramp. The payment
     ///      token is pulled in and burned in the same transaction, so the
     ///      redeemed supply is destroyed before any fiat can be claimed.
     function redeem(uint256 _amount, bytes32 _destinationId, address _escrow) external returns (uint256 tokenId) {

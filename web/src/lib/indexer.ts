@@ -152,9 +152,9 @@ async function indexProposalsFromChain() {
               companyName,
               cost: weiToGES(proposal[1]),
               milestones: "[]",
-              specContentHash: proposal[4] as string,
-              ipfsHash: proposal[5] as string,
-              depositRequired: proposal[6] as boolean,
+              specContentHash: proposal[3] as string,
+              ipfsHash: proposal[4] as string,
+              depositRequired: proposal[5] as boolean,
             },
           });
         } else {
@@ -164,9 +164,9 @@ async function indexProposalsFromChain() {
               companyName,
               cost: weiToGES(proposal[1]),
               milestones: "[]",
-              specContentHash: proposal[4] as string,
-              ipfsHash: proposal[5] as string,
-              depositRequired: proposal[6] as boolean,
+              specContentHash: proposal[3] as string,
+              ipfsHash: proposal[4] as string,
+              depositRequired: proposal[5] as boolean,
               project: { connect: { governance: p.governance } },
             },
           });

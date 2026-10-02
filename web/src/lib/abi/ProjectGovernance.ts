@@ -650,19 +650,6 @@ export const ProjectGovernanceAbi = [
   },
   {
     "type": "function",
-    "name": "lastPermissionlessRetryAt",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "nativePayment",
     "inputs": [],
     "outputs": [
@@ -1636,6 +1623,11 @@ export const ProjectGovernanceAbi = [
   },
   {
     "type": "error",
+    "name": "FeeTooHigh",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InsufficientBalance",
     "inputs": [
       {
@@ -1764,11 +1756,6 @@ export const ProjectGovernanceAbi = [
   },
   {
     "type": "error",
-    "name": "ProposalsNotClosed",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "SelectionNotPending",
     "inputs": []
   },
@@ -1802,4 +1789,4 @@ export const ProjectGovernanceAbi = [
     "name": "ZeroAmount",
     "inputs": []
   }
-];
+] as const;

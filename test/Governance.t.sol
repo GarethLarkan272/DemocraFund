@@ -497,10 +497,10 @@ contract GovernanceTest is TestBase {
     }
 
     // --------------------------------------------------------------------------
-    // ----------------------- AWARD HARDENING (SECURITY) ------------------------
+    // ---------------------------- AWARD GUARDS --------------------------------
     // --------------------------------------------------------------------------
 
-    /// H1: a company admin who opted into the committee pool cannot then bid
+    /// A company admin who opted into the committee pool cannot then bid
     /// (they would become the builder signer inside their own committee and
     /// brick the award). The guard makes the pool self-protecting: no winner
     /// can ever be in the draw.
@@ -515,7 +515,7 @@ contract GovernanceTest is TestBase {
         governance.createProposal(COMPANY_ID, keccak256("s"), keccak256("i"), COST, false, _proposalMilestones());
     }
 
-    /// H1 mirrored: a company admin who already bid cannot opt into the
+    /// Mirrored: a company admin who already bid cannot opt into the
     /// committee afterwards - same mutual exclusion, other direction.
     function testBuilderCannotOptInAfterBidding() public {
         _deployProject();
@@ -527,7 +527,7 @@ contract GovernanceTest is TestBase {
         governance.optInForCommittee();
     }
 
-    /// H1 end-to-end: with the guard in place, a pool of 4+ (VRF draw) can
+    /// End-to-end: with the guard in place, a pool of 4+ (VRF draw) can
     /// never contain the winner, so the draw and fulfillment always succeed.
     function testAwardWithCleanPoolSucceeds() public {
         escrow = _deployAndAward(6);
@@ -550,7 +550,7 @@ contract GovernanceTest is TestBase {
     // ------------------------------ FACTORY GUARDS -----------------------------
     // --------------------------------------------------------------------------
 
-    /// M3: an escrow is funded exactly once - a second mint for the same
+    /// An escrow is funded exactly once - a second mint for the same
     /// escrow reverts even if called by the same governance.
     function testEscrowFundedOnce() public {
         _deployAndAward(0);
