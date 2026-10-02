@@ -142,9 +142,14 @@ contract FlowTest is TestBase {
         registry.registerCompany(keccak256("second company"));
         _deployProject();
 
-        // 3 opt-ins so the award produces a real committee.
-        for (uint256 i; i < 3; i++) {
-            vm.prank(memberAddrs[i]);
+        // 3 opt-ins so the award produces a real committee. memberAddrs[1] is a
+        // bidding company admin, so the committee guard keeps them out.
+        uint256[] memory optInIds = new uint256[](3);
+        optInIds[0] = 0;
+        optInIds[1] = 2;
+        optInIds[2] = 3;
+        for (uint256 i; i < optInIds.length; i++) {
+            vm.prank(memberAddrs[optInIds[i]]);
             governance.optInForCommittee();
         }
 

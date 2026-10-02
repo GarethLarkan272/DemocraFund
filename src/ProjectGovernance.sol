@@ -47,8 +47,7 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
     struct Proposal {
         uint256 id;
         uint256 cost;
-        address admin;
-        address fundWallet;
+        address admin; // The company admin wallet - payouts land here, and it is the escrow's builder signer.
         bytes32 specContentHash;
         bytes32 ipfsHash;
         bool depositRequired;
@@ -96,7 +95,7 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
     uint256 public selectionRequestId; // The in-flight VRF request.
     uint256 public committeeFeePerSignature; // Minted per member per milestone signed.
     uint256 public awardDeadline; // Last moment the admin may award; then anyone can expire.
-    uint256 public selectionRequestedAt; // When the draw was requested; enables permissionless retry.
+    uint256 public selectionRequestedAt; // When the draw was requested; enables permissionless abort.
 
     // Content hashes - 32 bytes each, one per slot. deliberationWindow is a
     // lone 8-byte value that cannot pack into slot 1 (26 of 32 bytes used),
@@ -125,6 +124,9 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
     // exactly like an array would, without storing a full array.
     mapping(address => bool) public optedIn;
     mapping(uint256 id => address member) public optedInById;
+
+    // Mapping to store addresses that are admin of funds in proposals, to ensure they cannot opt in to committee as well.
+    mapping(address user => bool) public involvedInProposal;
 
     // One proposal per company per tender.
     mapping(uint256 companyId => bool submitted) public companyHasProposal;
@@ -175,6 +177,8 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
     error CompanyNotActive();
     error ProposalsNotClosed();
     error DeadlineExtensionOnlyWhenEmpty();
+    error AlreadyApartOfCommittee();
+    error AlreadyInProposal();
 
     event VoteCast(address indexed voter, uint256 indexed proposalId);
     event ShortlistFixed(uint256[] proposalIds);
@@ -399,11 +403,11 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
         projectEscrowInstanceAddr = projectEscrowImplementation.clone();
         projectEscrow = ProjectEscrow(projectEscrowInstanceAddr);
         projectEscrow.initialize(
-            tempProposal.fundWallet,
+            tempProposal.admin,
             treasuryWallet,
             token,
             projectGovernanceSafeWallet,
-            tempProposal.fundWallet,
+            tempProposal.admin,
             tempProposal.cost,
             milestoneAmounts,
             committeeFeePerSignature
@@ -537,6 +541,7 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
         ) revert OptInClosed();
         if (msg.sender == projectGovernanceSafeWallet) revert AdminCannotOptIn();
         if (optedIn[msg.sender]) revert AlreadyOptedIn();
+        if (involvedInProposal[msg.sender]) revert AlreadyInProposal();
 
         optedIn[msg.sender] = true;
         optedInById[optInCount] = msg.sender;
@@ -590,15 +595,13 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
 
     /// @notice Re-requests randomness if the original request was never
     ///         fulfilled (e.g. subscription underfunded, coordinator hiccup).
-    /// @dev Admin may retry immediately; once SELECTION_RETRY_DELAY has
-    ///      passed, anyone may - the old requestId is simply superseded.
-    function retryCommitteeSelection() external {
+    /// @dev Admin only. Each retry fires a new VRF request that costs the
+    ///      subscription fees, so retrying must not be permissionless (a
+    ///      griefer could drain the subscription). If the admin is gone, the
+    ///      permissionless abort path (cancelProject after SELECTION_RETRY_DELAY)
+    ///      returns the funds to the treasury instead.
+    function retryCommitteeSelection() external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (!selectionPending) revert SelectionNotPending();
-        if (msg.sender != projectGovernanceSafeWallet) {
-            if (selectionRequestedAt == 0 || block.timestamp < selectionRequestedAt + SELECTION_RETRY_DELAY) {
-                _checkRole(DEFAULT_ADMIN_ROLE);
-            }
-        }
         _requestCommitteeSelection();
     }
 
@@ -727,16 +730,27 @@ contract ProjectGovernance is VRFConsumerBaseV2Plus, AccessControl {
         // unsupported by the legacy (non-viaIR) pipeline, which forge
         // coverage uses unless --ir-minimum is passed.
         Proposal storage proposal = proposals[numberOfProposals];
+
+        // One wallet cannot be both a bidder and a committee opt-in: the
+        // escrow's release rule treats the builder as a signer, so a builder
+        // in the pool would make setCommitteeMembers revert and brick the
+        // award (or its VRF fulfillment). optInForCommittee has the mirrored
+        // check (involvedInProposal); this one blocks the reverse order
+        // (opted in first, then bidding). The proposal's admin is the escrow's
+        // builder signer and payout wallet, so checking the admin wallet
+        // covers the full surface.
+        if (optedIn[companyAdminWallet]) revert AlreadyApartOfCommittee();
         proposal.id = numberOfProposals;
         proposal.cost = _cost;
         proposal.admin = companyAdminWallet;
-        proposal.fundWallet = companyAdminWallet; // payouts land in the identity wallet
         proposal.specContentHash = _specContentHash;
         proposal.ipfsHash = _ipfsHash;
         proposal.depositRequired = _depositRequired;
         for (uint256 x; x < _milestones.length; x++) {
             proposal.milestones.push(_milestones[x]);
         }
+
+        involvedInProposal[proposal.admin] = true;
 
         emit ProposalCreated(numberOfProposals, _companyId, companyAdminWallet, _cost);
 

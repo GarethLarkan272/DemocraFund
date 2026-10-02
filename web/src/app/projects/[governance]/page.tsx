@@ -9,7 +9,6 @@ type Proposal = {
   id: string;
   cost: string;
   admin: string;
-  fundWallet: string;
   specContentHash: string;
   depositRequired: boolean;
   companyName: string | null;

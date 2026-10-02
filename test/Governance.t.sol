@@ -214,24 +214,27 @@ contract GovernanceTest is TestBase {
     // ---------------------------- VRF TIMEOUT PATHS ----------------------------
     // --------------------------------------------------------------------------
 
-    /// A pending draw can be retried by anyone after SELECTION_RETRY_DELAY.
-    function testRetryPermissionlessAfterDelay() public {
+    /// A pending draw can only be retried by the admin - retrying fires a new
+    /// VRF request that costs the subscription, so it must not be open to
+    /// griefers. The permissionless escape is the abort path instead.
+    function testRetryAdminOnly() public {
         _deployAndAward(4);
         assertTrue(governance.selectionPending());
 
-        // Admin may retry immediately.
-        vm.prank(admin);
-        governance.retryCommitteeSelection();
-
-        // Others may not until the delay passes.
+        // Others may never retry.
         vm.prank(outsider);
         vm.expectRevert();
         governance.retryCommitteeSelection();
 
-        vm.warp(block.timestamp + 8 days);
-        uint256 oldRequestId = governance.selectionRequestId();
+        // The admin may retry immediately, and even after the delay.
+        vm.prank(admin);
         governance.retryCommitteeSelection();
-        assertNotEq(governance.selectionRequestId(), oldRequestId);
+        uint256 adminRequest = governance.selectionRequestId();
+
+        vm.warp(block.timestamp + 8 days);
+        vm.prank(admin);
+        governance.retryCommitteeSelection();
+        assertNotEq(governance.selectionRequestId(), adminRequest);
         assertTrue(governance.selectionPending());
     }
 
@@ -491,6 +494,72 @@ contract GovernanceTest is TestBase {
         vm.prank(memberAddrs[0]);
         vm.expectRevert(ProjectGovernance.UserAlreadyVoted.selector);
         governance.voteForProposal(0);
+    }
+
+    // --------------------------------------------------------------------------
+    // ----------------------- AWARD HARDENING (SECURITY) ------------------------
+    // --------------------------------------------------------------------------
+
+    /// H1: a company admin who opted into the committee pool cannot then bid
+    /// (they would become the builder signer inside their own committee and
+    /// brick the award). The guard makes the pool self-protecting: no winner
+    /// can ever be in the draw.
+    function testBuilderCannotBidAfterOptIn() public {
+        _deployProject();
+        vm.prank(builder);
+        governance.optInForCommittee();
+        assertTrue(governance.optedIn(builder));
+
+        vm.prank(builder);
+        vm.expectRevert(ProjectGovernance.AlreadyApartOfCommittee.selector);
+        governance.createProposal(COMPANY_ID, keccak256("s"), keccak256("i"), COST, false, _proposalMilestones());
+    }
+
+    /// H1 mirrored: a company admin who already bid cannot opt into the
+    /// committee afterwards - same mutual exclusion, other direction.
+    function testBuilderCannotOptInAfterBidding() public {
+        _deployProject();
+        vm.prank(builder);
+        governance.createProposal(COMPANY_ID, keccak256("s"), keccak256("i"), COST, false, _proposalMilestones());
+
+        vm.prank(builder);
+        vm.expectRevert(ProjectGovernance.AlreadyInProposal.selector);
+        governance.optInForCommittee();
+    }
+
+    /// H1 end-to-end: with the guard in place, a pool of 4+ (VRF draw) can
+    /// never contain the winner, so the draw and fulfillment always succeed.
+    function testAwardWithCleanPoolSucceeds() public {
+        escrow = _deployAndAward(6);
+
+        assertTrue(governance.selectionPending());
+        _fulfill(_wordsFrom(1, 5));
+        assertTrue(escrow.committeeFinalized());
+
+        address[] memory members = escrow.getMemberSigners();
+        for (uint256 i; i < members.length; i++) {
+            assertTrue(members[i] != builder);
+        }
+        address[] memory alts = escrow.getAlternates();
+        for (uint256 i; i < alts.length; i++) {
+            assertTrue(alts[i] != builder);
+        }
+    }
+
+    // --------------------------------------------------------------------------
+    // ------------------------------ FACTORY GUARDS -----------------------------
+    // --------------------------------------------------------------------------
+
+    /// M3: an escrow is funded exactly once - a second mint for the same
+    /// escrow reverts even if called by the same governance.
+    function testEscrowFundedOnce() public {
+        _deployAndAward(0);
+
+        // Compute into a local: the view call would consume the cheatcodes.
+        uint256 fundedAmount = COST + escrow.feeReserve();
+        vm.prank(address(governance));
+        vm.expectRevert(ProjectFactory.AlreadyFunded.selector);
+        factory.mintInitialSupplyForProject(address(escrow), fundedAmount);
     }
 
     // --------------------------------------------------------------------------

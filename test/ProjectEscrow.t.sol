@@ -591,7 +591,7 @@ contract ProjectEscrowTest is TestBase {
 
         // The proposal carried no wallets: they came from the registry.
         // (The public getter flattens the struct without the dynamic array.)
-        (,, address proposalAdmin,,,,) = governance.proposals(0);
+        (,, address proposalAdmin,,,) = governance.proposals(0);
         assertEq(proposalAdmin, memberAddrs[3]);
         assertEq(escrow.projectWallet(), memberAddrs[3]);
         assertEq(escrow.builderSigner(), memberAddrs[3]);
@@ -710,6 +710,76 @@ contract ProjectEscrowTest is TestBase {
         vm.prank(gov);
         vm.expectRevert(ProjectEscrow.CommitteeAlreadyFinalized.selector);
         escrow.abort();
+    }
+
+    /// H3: a stray token donation to the escrow must not brick milestone
+    /// releases - the accounting check is a solvency inequality, not an exact
+    /// identity. The surplus simply remains sweepable at the end.
+    function testDonationDoesNotBrickReleases() public {
+        _newEscrow();
+        _setMembers(toUint256Array(100, 101, 102), new uint256[](0));
+
+        uint256 funded = COST + escrow.feeReserve();
+        token.mint(address(escrow), 1); // dust donation
+
+        vm.prank(builder);
+        escrow.submitMilestoneComplete(EVIDENCE);
+        escrow.approveMilestone(_milestoneSigs(0, EVIDENCE, toUint256Array(ADMIN_PK, 100)));
+
+        assertEq(escrow.totalReleased(), AMOUNTS[0]);
+        assertEq(token.balanceOf(builder), AMOUNTS[0]);
+        // balance still holds the donation: funded + 1 - released milestone.
+        assertEq(token.balanceOf(address(escrow)), funded + 1 - AMOUNTS[0]);
+    }
+
+    /// H3: the donated dust flows to the treasury on cancellation alongside
+    /// the rest of the surplus.
+    function testDonationRefundedOnCancellation() public {
+        _newEscrow();
+        _setMembers(toUint256Array(100, 101, 102), new uint256[](0));
+        token.mint(address(escrow), 1); // dust donation
+
+        bytes32 reason = keccak256("abandoned");
+        escrow.approveCancellation(reason, _cancellationSigs(reason, toUint256Array(100, 101, 102, ADMIN_PK)));
+
+        assertTrue(escrow.cancelled());
+        assertEq(token.balanceOf(treasury), COST + escrow.feeReserve() + 1);
+    }
+
+    /// H3 maths: the solvency check is exactly the old identity rewritten as
+    /// an inequality - with no donation, balance still equals
+    /// budget + feeReserve - paid-out, so the accounting invariant holds.
+    function testAccountingIdentityStillExactWithoutDonations() public {
+        _newEscrow();
+        _setMembers(toUint256Array(100, 101, 102), new uint256[](0));
+
+        vm.prank(builder);
+        escrow.submitMilestoneComplete(EVIDENCE);
+        escrow.approveMilestone(_milestoneSigs(0, EVIDENCE, toUint256Array(ADMIN_PK, 100)));
+
+        assertEq(
+            token.balanceOf(address(escrow)) + escrow.totalReleased() + escrow.settlementPaid() + escrow.feesCollected()
+                + escrow.totalReturnedOnCancellation() + escrow.totalSweptToTreasury(),
+            COST + escrow.feeReserve()
+        );
+    }
+
+    /// M4: the escrow itself enforces the committee fee cap (last line of
+    /// defense behind the factory and governance).
+    function testInitializeRejectsExcessiveFee() public {
+        ProjectEscrow impl = new ProjectEscrow();
+        address clone = Clones.clone(address(impl));
+        ProjectEscrow e = ProjectEscrow(clone);
+
+        uint256[] memory amounts = _milestoneAmounts();
+        vm.prank(gov);
+        vm.expectRevert(ProjectEscrow.FeeTooHigh.selector);
+        e.initialize(builder, treasury, address(token), admin, builder, COST, amounts, 1001 * 1e18);
+
+        // At the cap exactly, initialization succeeds.
+        vm.prank(gov);
+        e.initialize(builder, treasury, address(token), admin, builder, COST, amounts, 1000 * 1e18);
+        assertEq(e.committeeFeePerSignature(), 1000 * 1e18);
     }
 
     function testSettlementPaidToBuilderBeforeCancellation() public {
@@ -1316,6 +1386,16 @@ contract ProjectEscrowTest is TestBase {
 
         vm.expectRevert(Redemption.NotPending.selector);
         redemption.markPaid(tokenId, "TRX-123");
+    }
+
+    /// M2: the payer cannot mark a non-existent receipt as paid or rejected -
+    /// the receipt must actually exist (minted via redeem).
+    function testMarkPaidRejectsGhostReceipt() public {
+        vm.expectRevert(); // _requireOwned -> ERC721NonexistentToken
+        redemption.markPaid(999, "ghost");
+
+        vm.expectRevert();
+        redemption.markRejected(999, keccak256("ghost"));
     }
 
     /// Receipts are transferable; the state follows the tokenId, not the

@@ -512,6 +512,19 @@ export const ProjectGovernanceAbi = [
   },
   {
     "type": "function",
+    "name": "extendProposalDeadline",
+    "inputs": [
+      {
+        "name": "_extension",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "getRoleAdmin",
     "inputs": [
       {
@@ -592,6 +605,25 @@ export const ProjectGovernanceAbi = [
   },
   {
     "type": "function",
+    "name": "involvedInProposal",
+    "inputs": [
+      {
+        "name": "user",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "ipfsHash",
     "inputs": [],
     "outputs": [
@@ -612,6 +644,19 @@ export const ProjectGovernanceAbi = [
         "name": "",
         "type": "bytes32",
         "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "lastPermissionlessRetryAt",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -859,11 +904,6 @@ export const ProjectGovernanceAbi = [
       },
       {
         "name": "admin",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "fundWallet",
         "type": "address",
         "internalType": "address"
       },
@@ -1271,6 +1311,25 @@ export const ProjectGovernanceAbi = [
   },
   {
     "type": "event",
+    "name": "DeadlinesExtended",
+    "inputs": [
+      {
+        "name": "proposalDeadline",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "votingDeadline",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "OwnershipTransferRequested",
     "inputs": [
       {
@@ -1522,6 +1581,16 @@ export const ProjectGovernanceAbi = [
   },
   {
     "type": "error",
+    "name": "AlreadyApartOfCommittee",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AlreadyInProposal",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "AlreadyOptedIn",
     "inputs": []
   },
@@ -1543,6 +1612,11 @@ export const ProjectGovernanceAbi = [
   {
     "type": "error",
     "name": "CompanyNotActive",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DeadlineExtensionOnlyWhenEmpty",
     "inputs": []
   },
   {
@@ -1623,6 +1697,11 @@ export const ProjectGovernanceAbi = [
   },
   {
     "type": "error",
+    "name": "NoProposalsToVoteOn",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NotInShortlist",
     "inputs": []
   },
@@ -1685,6 +1764,11 @@ export const ProjectGovernanceAbi = [
   },
   {
     "type": "error",
+    "name": "ProposalsNotClosed",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "SelectionNotPending",
     "inputs": []
   },
@@ -1718,4 +1802,4 @@ export const ProjectGovernanceAbi = [
     "name": "ZeroAmount",
     "inputs": []
   }
-] as const;
+];

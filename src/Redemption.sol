@@ -124,6 +124,7 @@ contract Redemption is ERC721, AccessControl {
     /// @param _payoutRef The paying authority's own payment reference.
     /// @dev PAYER_ROLE only; the on-chain proof that the burn was honoured.
     function markPaid(uint256 _tokenId, string calldata _payoutRef) external onlyRole(PAYER_ROLE) {
+        _requireOwned(_tokenId);
         Receipt storage receipt = receipts[_tokenId];
         if (receipt.state != ReceiptState.Pending) revert NotPending();
 
@@ -140,6 +141,7 @@ contract Redemption is ERC721, AccessControl {
     /// @dev PAYER_ROLE only. A rejected receipt cannot be paid later; the
     ///      redeemer may start a new redemption for another destination.
     function markRejected(uint256 _tokenId, bytes32 _reason) external onlyRole(PAYER_ROLE) {
+        _requireOwned(_tokenId);
         Receipt storage receipt = receipts[_tokenId];
         if (receipt.state != ReceiptState.Pending) revert NotPending();
         if (_reason == bytes32(0)) revert InvalidDestination();

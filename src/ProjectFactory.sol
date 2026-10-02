@@ -35,6 +35,7 @@ contract ProjectFactory is AccessControl {
     CompanyRegistry public companyRegistry; // Companies allowed to bid on tenders.
 
     mapping(address => bool) public isProject; // Registered project governance contracts.
+    mapping(address => bool) public escrowFunded; // Each escrow is funded exactly once at award.
 
     uint256 public projectCount;
     uint256 public globalMinimumVotingDuration;
@@ -59,6 +60,7 @@ contract ProjectFactory is AccessControl {
     error ZeroAmount();
     error InvalidVRFConfig();
     error FeeTooHigh();
+    error AlreadyFunded();
 
     event ProjectCreated(address indexed projectInstance);
     event ProjectFunded(address indexed projectEscrow, uint256 amount);
@@ -164,13 +166,17 @@ contract ProjectFactory is AccessControl {
     ///      governance can never mint supply to an arbitrary address or
     ///      beyond what its own tender permits. The fee reserve is the
     ///      escrow's own value (computed from its milestone count and fee),
-    ///      so the escrow remains the source of truth for its funding.
+    ///      so the escrow remains the source of truth for its funding. Each
+    ///      escrow is funded exactly once: a second call for the same escrow
+    ///      reverts, so the award budget can never be minted twice.
     function mintInitialSupplyForProject(address _projectEscrow, uint256 _amount) external {
         ProjectGovernance gov = ProjectGovernance(msg.sender);
         if (!isProject[msg.sender]) revert ProjectNonExistent();
         if (address(gov.projectEscrow()) != _projectEscrow) revert ProjectNonExistent();
         if (_amount > gov.budgetCap() + ProjectEscrow(_projectEscrow).feeReserve()) revert ZeroAmount();
+        if (escrowFunded[_projectEscrow]) revert AlreadyFunded();
 
+        escrowFunded[_projectEscrow] = true;
         IPaymentToken(token).mint(_projectEscrow, _amount);
 
         emit ProjectFunded(_projectEscrow, _amount);

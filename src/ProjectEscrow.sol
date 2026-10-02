@@ -70,6 +70,7 @@ contract ProjectEscrow is Initializable, ReentrancyGuard, EIP712 {
 
     uint256 public constant MAX_MEMBERS = 3;
     uint256 public constant MAX_MILESTONES = 24;
+    uint256 public constant MAX_COMMITTEE_FEE_PER_SIGNATURE = 1000 * 1e18; // Mirrors ProjectFactory's cap (defense in depth).
     uint8 public constant ADMIN_SLOT = 0;
 
     bytes32 public constant MILESTONE_APPROVAL_TYPEHASH =
@@ -149,6 +150,7 @@ contract ProjectEscrow is Initializable, ReentrancyGuard, EIP712 {
     error AddressZero();
     error ZeroBudget();
     error ZeroAmount();
+    error FeeTooHigh();
     error ProjectCancelled();
     error SettlementTooHigh();
     error UnauthorisedCalled();
@@ -229,6 +231,7 @@ contract ProjectEscrow is Initializable, ReentrancyGuard, EIP712 {
         if (_milestoneAmounts.length == 0) revert NoMilestones();
         if (_milestoneAmounts.length > MAX_MILESTONES) revert InvalidMilestoneCount();
         if (_adminSigner == _builderSigner) revert DuplicateSigner();
+        if (_committeeFeePerSignature > MAX_COMMITTEE_FEE_PER_SIGNATURE) revert FeeTooHigh();
 
         uint256 totalCost;
         for (uint256 i; i < _milestoneAmounts.length; i++) {
@@ -809,17 +812,19 @@ contract ProjectEscrow is Initializable, ReentrancyGuard, EIP712 {
     }
 
     /// @dev Transfers a milestone amount to the builder's wallet, updates the
-    ///      accounting, and re-verifies the master identity: escrow balance
-    ///      plus everything paid out (milestones, settlements, collected
-    ///      fees, treasury refunds and sweeps) equals the budget plus the
-    ///      funded fee reserve. Because the reserve covers all accruals, the
-    ///      balance can never drop below what members are still owed in fees.
+    ///      accounting, and re-verifies the escrow's solvency: the balance can
+    ///      never drop below the funded budget plus fee reserve minus
+    ///      everything already paid out. The check is an inequality (not an
+    ///      exact identity) so a stray donation of tokens to the escrow can
+    ///      never brick the release path - the surplus simply sweeps to the
+    ///      treasury at completion or cancellation.
     function _releaseToProjectWallet(uint256 _amount, uint256 _index) internal {
         token.safeTransfer(projectWallet, _amount);
         totalReleased += _amount;
         if (
-            token.balanceOf(address(this)) + totalReleased + settlementPaid + feesCollected
-                + totalReturnedOnCancellation + totalSweptToTreasury != totalProjectBudget + feeReserve
+            token.balanceOf(address(this))
+                < totalProjectBudget + feeReserve - totalReleased - settlementPaid - feesCollected
+                    - totalReturnedOnCancellation - totalSweptToTreasury
         ) revert AccountingMismatch();
 
         emit MilestoneReleased(_index, projectWallet, _amount);
